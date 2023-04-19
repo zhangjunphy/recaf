@@ -8,6 +8,11 @@ pub struct Pos {
     pub col: usize,
 }
 
+pub struct SrcRange {
+    pub start: Pos,
+    pub end: Pos,
+}
+
 impl fmt::Display for Pos {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}, {}", self.row, self.col)
@@ -37,7 +42,14 @@ impl SourcePosMap {
         return Ok(res);
     }
 
-    pub fn lookup(&self, offset: usize) -> Option<&Pos> {
+    pub fn lookup_offset(&self, offset: usize) -> Option<&Pos> {
         self.mappings.get(offset)
+    }
+
+    pub fn lookup(&self, start: usize, end: usize) -> Option<&SrcRange> {
+        self.lookup_offset(start).and_then(|s| {
+            self.lookup_offset(end)
+                .and_then(|e| Some(SrcRange { start: s, end: e }))
+        });
     }
 }

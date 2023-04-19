@@ -1,8 +1,8 @@
 use std::str::FromStr;
-use decaf::parser::ast::{Expr, Opcode, ExprBare, SrcRange};
+use decaf::parser::ast;
 use decaf::expr;
 
-grammar;
+grammar(src_map: SourcePosMap);
 
 pub Expr: Box<Expr> = {
     <start:@L> <l:Expr> <o:ExprOp> <r:Factor> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
@@ -30,3 +30,16 @@ Term: Box<Expr> = {
 };
 
 Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
+
+ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ast::ID{id: id, range: src_map.lookup(start, end)}
+IntLiteral: Literal = {
+    <r"[[:digit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
+    <r"0x[[:xdigit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
+}
+BoolLiteral: Literal = {
+    <"true"> => Literal::Bool(true)
+    <"false"> => Literal::Bool(false)
+}
+CharLiteral: Liberal = {
+    "'" <r"[\x20-\x7F]"> "'" 
+}

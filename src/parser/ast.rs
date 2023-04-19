@@ -1,10 +1,5 @@
 use crate::parser::source_pos::Pos;
 
-pub struct SrcRange {
-    pub start: Pos,
-    pub end: Pos,
-}
-
 // AST Root
 pub struct Program {
     pub imports: Vec<ImportDecl>,
