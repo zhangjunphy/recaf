@@ -31,15 +31,18 @@ Term: Box<Expr> = {
 
 Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
 
-ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ast::ID{id: id, range: src_map.lookup(start, end)}
+ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ast::ID{id: id, range: src_map.lookup(start, end)};
+
 IntLiteral: Literal = {
     <r"[[:digit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
     <r"0x[[:xdigit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
-}
+};
+
 BoolLiteral: Literal = {
-    <"true"> => Literal::Bool(true)
-    <"false"> => Literal::Bool(false)
-}
+    <"true"> => Literal::Bool(true),
+    <"false"> => Literal::Bool(false),
+};
+
 CharLiteral: Liberal = {
-    "'" <r"[\x20-\x7F]"> "'" 
-}
+    "'" <r"[\x20-\x7F]"> "'" => Literal::Char(<>.chars()[0].to_digit(10).unwrap())
+};
