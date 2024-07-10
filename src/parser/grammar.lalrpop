@@ -1,48 +1,48 @@
 use std::str::FromStr;
-use decaf::parser::ast;
-use decaf::expr;
+use recaf::parser::ast::*;
+use recaf::parser::source_pos::{SourcePosMap};
 
-grammar(src_map: SourcePosMap);
+grammar(src_map: &SourcePosMap);
 
-pub Expr: Box<Expr> = {
-    <start:@L> <l:Expr> <o:ExprOp> <r:Factor> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
-    Factor,
-};
+//pub Expr: Box<Expr> = {
+//    <start:@L> <l:Expr> <o:ExprOp> <r:Factor> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
+//    Factor,
+//};
+//
+//ExprOp: Opcode = {
+//    "+" => Opcode::Add,
+//    "-" => Opcode::Sub,
+//};
+//
+//Factor: Box<Expr> = {
+//    <start:@L> <l:Factor> <o:FactorOp> <r:Term> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
+//    Term,
+//};
+//
+//FactorOp: Opcode = {
+//    "*" => Opcode::Mul,
+//    "/" => Opcode::Div,
+//};
+//
+//Term: Box<Expr> = {
+//    <start:@L> <n:Num> <end:@R> => Box::new(expr![Number, start, end, n]),
+//    "(" <Expr> ")",
+//};
+//
+//Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
 
-ExprOp: Opcode = {
-    "+" => Opcode::Add,
-    "-" => Opcode::Sub,
-};
+pub ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ID{id: id.to_string(), range: src_map.lookup(start, end)};
 
-Factor: Box<Expr> = {
-    <start:@L> <l:Factor> <o:FactorOp> <r:Term> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
-    Term,
-};
-
-FactorOp: Opcode = {
-    "*" => Opcode::Mul,
-    "/" => Opcode::Div,
-};
-
-Term: Box<Expr> = {
-    <start:@L> <n:Num> <end:@R> => Box::new(expr![Number, start, end, n]),
-    "(" <Expr> ")",
-};
-
-Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
-
-ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ast::ID{id: id, range: src_map.lookup(start, end)};
-
-IntLiteral: Literal = {
+pub IntLiteral: Literal = {
     <r"[[:digit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
     <r"0x[[:xdigit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
 };
 
-BoolLiteral: Literal = {
+pub BoolLiteral: Literal = {
     <"true"> => Literal::Bool(true),
     <"false"> => Literal::Bool(false),
 };
 
-CharLiteral: Liberal = {
-    "'" <r"[\x20-\x7F]"> "'" => Literal::Char(<>.chars()[0].to_digit(10).unwrap())
+pub CharLiteral: Literal = {
+    <r"'[\x20-\x7F]'"> => Literal::Char(<>.chars().nth(1).expect("Malformed char literal: {<>}") as u8)
 };

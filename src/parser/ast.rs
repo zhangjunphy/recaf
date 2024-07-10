@@ -1,4 +1,5 @@
-use crate::parser::source_pos::Pos;
+use crate::parser::source_pos::SrcRange;
+use std::fmt;
 
 // AST Root
 pub struct Program {
@@ -9,41 +10,41 @@ pub struct Program {
 
 pub struct ImportDecl {
     pub id: ID,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct FieldDecl {
     pub typ: Type,
     pub field: Field,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct MethodDecl {
     pub typ: ReturnType,
     pub arguments: (Type, ID),
     pub block: Block,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct Block {
     pub fields: Vec<FieldDecl>,
     pub statements: Vec<Statement>,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct Statement {
     pub statement: StatementBare,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct Expr {
     pub expr: ExprBare,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct ID {
     pub id: String,
-    pub range: SrcRange,
+    pub range: Option<SrcRange>,
 }
 
 pub struct Assign {
@@ -59,7 +60,7 @@ pub struct If {
 
 pub enum Argument {
     Expr(Expr),
-    StringLiteral(String)
+    StringLiteral(String),
 }
 
 pub struct MethodCall {
@@ -95,6 +96,16 @@ pub enum Literal {
     Int(i64),
     Char(u8),
     Bool(bool),
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Literal::Int(v) => write!(f, "{}", v),
+            Literal::Char(v) => write!(f, "{}", v),
+            Literal::Bool(v) => write!(f, "{}", v)
+        }
+    }
 }
 
 pub enum ExprBare {

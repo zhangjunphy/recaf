@@ -1,21 +1,27 @@
 use crate::error::Error;
 use std::fmt;
-use std::fs;
-use std::io::{BufRead, BufReader};
 
+#[derive(Debug, Clone)]
 pub struct Pos {
     pub row: usize,
     pub col: usize,
 }
 
+impl fmt::Display for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({},{})", self.row, self.col)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SrcRange {
     pub start: Pos,
     pub end: Pos,
 }
 
-impl fmt::Display for Pos {
+impl fmt::Display for SrcRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}, {}", self.row, self.col)
+        write!(f, "[{}-{}]", self.start, self.end)
     }
 }
 
@@ -24,18 +30,13 @@ pub struct SourcePosMap {
 }
 
 impl SourcePosMap {
-    pub fn build(f: &fs::File) -> Result<SourcePosMap, Error> {
-        let reader = BufReader::new(f);
+    pub fn new(s: &String) -> Result<SourcePosMap, Error> {
         let mut res = SourcePosMap {
             mappings: Vec::new(),
         };
-        for (row, l) in reader.lines().enumerate() {
-            if let Ok(line) = l {
-                for (col, _) in line.chars().enumerate() {
-                    res.mappings.push(Pos { row, col });
-                }
-            } else {
-                return Err(Error::new(""));
+        for (row, l) in s.lines().enumerate() {
+            for (col, _) in l.chars().enumerate() {
+                res.mappings.push(Pos { row, col });
             }
         }
 
@@ -46,10 +47,10 @@ impl SourcePosMap {
         self.mappings.get(offset)
     }
 
-    pub fn lookup(&self, start: usize, end: usize) -> Option<&SrcRange> {
+    pub fn lookup(&self, start: usize, end: usize) -> Option<SrcRange> {
         self.lookup_offset(start).and_then(|s| {
             self.lookup_offset(end)
-                .and_then(|e| Some(SrcRange { start: s, end: e }))
-        });
+                .and_then(|e| Some(SrcRange { start: s.clone(), end: e.clone() }))
+        })
     }
 }
