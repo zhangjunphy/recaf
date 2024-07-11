@@ -1,5 +1,6 @@
 use crate::error::Error;
 use crate::source_pos as sp;
+use std::collections::BTreeSet;
 
 #[derive(Clone)]
 pub enum Tok {
@@ -46,6 +47,7 @@ pub struct Lexer<'input> {
     sequence: &'input str,
     pos: sp::Pos,
     token_map: Vec<(&'input str, Tok)>,
+    whitespace: BTreeSet<char>,
 }
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
@@ -53,10 +55,19 @@ type TokenItem = Spanned<Tok, sp::Pos, Error>;
 
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
+        Lexer {
+            sequence: input,
+            pos: sp::Pos::new(0, 0, 0),
+            token_map: Lexer::token_map(),
+            whitespace: BTreeSet::from([' ', '\n', '\t', '\r']),
+        }
+    }
+
+    fn token_map() -> Vec<(&'input str, Tok)> {
         // We have to be careful to put longer patterns to the front so they get matched
-        // before some of its subsequence.
+        // before some of its subsequences.
         // There might be some better design but this should work for the moment.
-        let token_map = vec![
+        vec![
             ("if", Tok::If),
             ("import", Tok::Import),
             ("for", Tok::For),
@@ -94,17 +105,12 @@ impl<'input> Lexer<'input> {
             ("]", Tok::RBrack),
             ("{", Tok::LCurly),
             ("}", Tok::RCurly),
-        ];
-
-        Lexer {
-            sequence: input,
-            pos: sp::Pos::new(0, 0, 0),
-            token_map,
-        }
+        ]
     }
 
     fn scan(&mut self) -> Option<TokenItem> {
-        let to_scan = &self.sequence[self.pos.offset..];
+        self.consume_space();
+        let to_scan = self.to_scan();
         if to_scan.starts_with('"') {
             return self.match_string();
         } else if to_scan.starts_with('\'') {
@@ -118,16 +124,77 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    fn peek_next(&self) -> Option<char> {
+        if self.sequence.len() <= self.pos.offset {
+            return None;
+        }
+        self.sequence[self.pos.offset..].chars().next()
+    }
+
+    fn to_scan(&self) -> &str {
+        &self.sequence[self.pos.offset..]
+    }
+
+    fn forward_pos(&self, offset: usize) -> Result<sp::Pos, usize> {
+        let mut chars = self.to_scan().chars();
+        let mut res = self.pos.clone();
+        for i in 0..offset {
+            match chars.nth(i) {
+                None => return Err(i),
+                Some(c) => {
+                    if c == '\n' {
+                        res.row += 1;
+                        res.col = 0;
+                    } else {
+                        res.col += 1;
+                    }
+                    res.offset += 1;
+                }
+            }
+        }
+        Ok(res)
+    }
+
+    fn advance(&mut self, offset: usize) -> Result<(), usize> {
+        self.forward_pos(offset).and_then(|p| {
+            self.pos = p;
+            Ok(())
+        })
+    }
+
+    fn consume_space(&mut self) {
+        loop {
+            let next = self.peek_next();
+            match next {
+                None => return,
+                Some(c) =>
+                    if self.whitespace.contains(&c) {
+                        assert!(self.advance(1).is_ok());
+                    }
+            }
+        }
+    }
+
     fn match_token(&mut self) -> Option<TokenItem> {
         if self.sequence.len() <= self.pos.offset {
             return None;
         }
+        let mut res: Option<TokenItem> = None;
+        let mut offset = 0;
         for (pattern, tok) in &self.token_map {
-            if self.sequence[self.pos.offset..].starts_with(pattern) {
-                return Some(Ok((self.pos, tok.clone(), self.pos)));
+            if self.to_scan().starts_with(pattern) {
+                offset = pattern.chars().count();
+                let end = self.forward_pos(offset);
+                assert!(end.is_ok());
+                res = Some(Ok((self.pos, tok.clone(), end.unwrap())));
             }
         }
-        return None;
+        assert!(self.advance(offset).is_ok());
+        res
+    }
+
+    fn match_id(&mut self) -> Option<TokenItem> {
+        None
     }
     fn match_char(&mut self) -> Option<TokenItem> {
         None
