@@ -1,16 +1,23 @@
-use crate::parser::source_pos::SrcRange;
+use crate::source_pos::SrcSpan;
 use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Error {
-    range: Option<SrcRange>,
+    range: Option<SrcSpan>,
     msg: String,
 }
 
 impl Error {
-    pub fn new<S: Into<String>>(range: Option<SrcRange>, msg: S) -> Error {
+    pub fn new_span<S: Into<String>>(range: SrcSpan, msg: S) -> Error {
         Error {
-            range,
+            range: Some(range),
+            msg: msg.into(),
+        }
+    }
+
+    pub fn new<S: Into<String>>(msg: S) -> Error {
+        Error {
+            range: None,
             msg: msg.into(),
         }
     }

@@ -1,4 +1,4 @@
-use crate::parser::source_pos::SrcRange;
+use crate::source_pos::SrcSpan;
 use std::fmt;
 
 // AST Root
@@ -10,41 +10,41 @@ pub struct Program {
 
 pub struct ImportDecl {
     pub id: ID,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct FieldDecl {
     pub typ: Type,
     pub field: Field,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct MethodDecl {
     pub typ: ReturnType,
     pub arguments: (Type, ID),
     pub block: Block,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct Block {
     pub fields: Vec<FieldDecl>,
     pub statements: Vec<Statement>,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct Statement {
     pub statement: StatementBare,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct Expr {
     pub expr: ExprBare,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct ID {
     pub id: String,
-    pub range: Option<SrcRange>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct Assign {
@@ -160,6 +160,6 @@ pub enum BinOp {
 #[macro_export]
 macro_rules! expr {
     ($ii:ident, $s:expr, $e:expr $(, $x:ident )*) => {
-        Expr {expr: ExprBare::$ii ( $( $x ),* ), range: SrcRange {start: $s, end: $e} }
+        Expr {expr: ExprBare::$ii ( $( $x ),* ), range: SrcSpan {start: $s, end: $e} }
     }
 }

@@ -1,8 +1,7 @@
 use std::str::FromStr;
 use recaf::parser::ast::*;
-use recaf::parser::source_pos::{SourcePosMap};
 
-grammar(src_map: &SourcePosMap);
+grammar();
 
 //pub Expr: Box<Expr> = {
 //    <start:@L> <l:Expr> <o:ExprOp> <r:Factor> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
@@ -31,7 +30,7 @@ grammar(src_map: &SourcePosMap);
 //
 //Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
 
-pub ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ID{id: id.to_string(), range: src_map.lookup(start, end)};
+pub ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ID{id: id.to_string(), range: None};
 
 pub IntLiteral: Literal = {
     <r"[[:digit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
