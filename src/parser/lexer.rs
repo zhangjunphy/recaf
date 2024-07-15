@@ -3,7 +3,7 @@ use crate::source_pos::{Pos, SrcSpan};
 use regex::Regex;
 use std::collections::BTreeSet;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Tok {
     Import,
     If,
@@ -145,8 +145,7 @@ impl<'input> Lexer<'input> {
         for i in 0..nchars {
             match ci.next() {
                 None => return Err(i),
-                Some((offset, c)) => {
-                    assert!(offset == self.pos.offset, "Offset mismatch in lexer.");
+                Some((_, c)) => {
                     if c == '\n' {
                         res.row += 1;
                         res.col = 0;
@@ -165,11 +164,13 @@ impl<'input> Lexer<'input> {
         Ok(res)
     }
 
-    fn advance(&mut self, nchars: usize) -> Result<Pos, usize> {
-        self.forward_pos(nchars).and_then(|p| {
+    fn advance(&mut self, nchars: usize) -> Pos {
+        let pos = self.forward_pos(nchars).and_then(|p| {
             self.pos = p;
             Ok(p)
-        })
+        });
+        assert!(pos.is_ok());
+        pos.unwrap()
     }
 
     fn consume_non_syntatic(&mut self) -> bool {
@@ -190,9 +191,9 @@ impl<'input> Lexer<'input> {
             let next = self.peek_next();
             match next {
                 None => break,
-                Some(c) => {
+                Some((c, _)) => {
                     if self.whitespace.contains(&c) {
-                        assert!(self.advance(1).is_ok());
+                        self.advance(1);
                     } else {
                         break;
                     }
@@ -255,26 +256,26 @@ impl<'input> Lexer<'input> {
                 break;
             }
         }
-        assert!(self.advance(nchars).is_ok());
+        self.advance(nchars);
         res
     }
 
     fn match_escape_char(&mut self) -> Option<char> {
         let to_scan = self.to_scan();
         if to_scan.starts_with("\\n") {
-            self.advance(2).ok()?;
+            self.advance(2);
             return Some('\n');
         } else if to_scan.starts_with("\\\\") {
-            self.advance(2).ok()?;
+            self.advance(2);
             return Some('\\');
         } else if to_scan.starts_with("\\t") {
-            self.advance(2).ok()?;
+            self.advance(2);
             return Some('\t');
         } else if to_scan.starts_with("\\'") {
-            self.advance(2).ok()?;
+            self.advance(2);
             return Some('\'');
         } else if to_scan.starts_with("\\\"") {
-            self.advance(2).ok()?;
+            self.advance(2);
             return Some('"');
         } else {
             return None;
@@ -285,7 +286,7 @@ impl<'input> Lexer<'input> {
         let m = re.find(self.to_scan())?;
         let id = m.as_str().to_string();
         let start = self.pos;
-        let end = self.advance(id.chars().count()).unwrap();
+        let end = self.advance(id.chars().count());
         Some(Ok((start, Tok::ID(id), end)))
     }
     fn match_char(&mut self) -> Option<TokenItem> {
@@ -294,7 +295,7 @@ impl<'input> Lexer<'input> {
         if lquote != '\'' {
             return None;
         }
-        assert!(self.advance(1).is_ok());
+        self.advance(1);
         let res: char;
         if let Some(ec) = self.match_escape_char() {
             res = ec;
@@ -307,7 +308,7 @@ impl<'input> Lexer<'input> {
             )));
         } else if let Some((c, _)) = self.peek_next() {
             res = c;
-            assert!(self.advance(1).is_ok());
+            self.advance(1);
         } else {
             return Some(Err(Error::new_span(
                 start,
@@ -323,7 +324,7 @@ impl<'input> Lexer<'input> {
                 "Char literal not enclosed.",
             )));
         }
-        assert!(self.advance(1).is_ok());
+        self.advance(1);
         Some(Ok((start, Tok::Char(res), self.pos)))
     }
     fn match_string(&mut self) -> Option<TokenItem> {
@@ -332,11 +333,11 @@ impl<'input> Lexer<'input> {
         if lquote != '\"' {
             return None;
         }
-        assert!(self.advance(1).is_ok());
+        self.advance(1);
         let mut res = String::new();
         loop {
             if self.to_scan().starts_with('\"') {
-                assert!(self.advance(1).is_ok());
+                self.advance(1);
                 break;
             } else if let Some(c) = self.match_escape_char() {
                 res.push(c);
@@ -357,7 +358,7 @@ impl<'input> Lexer<'input> {
                 "String literal not enclosed.",
             )));
         }
-        assert!(self.advance(1).is_ok());
+        self.advance(1);
         Some(Ok((start, Tok::String(res), self.pos)))
     }
 }

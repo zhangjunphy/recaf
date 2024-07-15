@@ -3,8 +3,8 @@ use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Error {
-    range: Option<SrcSpan>,
-    msg: String,
+    pub range: Option<SrcSpan>,
+    pub msg: String,
 }
 
 impl Error {
