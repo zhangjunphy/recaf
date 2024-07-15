@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Pos {
-    pub offset: usize,
+    pub offset: usize, // offset of bytes
     pub row: usize,
     pub col: usize,
 }
