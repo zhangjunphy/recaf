@@ -34,7 +34,7 @@ pub enum Tok {
     CondOp(String),
 
     QMark,
-    SemiColon,
+    Colon,
 
     LParen,
     RParen,
@@ -42,6 +42,8 @@ pub enum Tok {
     RBrack,
     LCurly,
     RCurly,
+
+    Semicolon,
 }
 
 pub struct Lexer<'input> {
@@ -99,19 +101,25 @@ impl<'input> Lexer<'input> {
             ("&&", Tok::CondOp("&&".to_string())),
             ("||", Tok::CondOp("||".to_string())),
             ("?", Tok::QMark),
-            (":", Tok::SemiColon),
+            (":", Tok::Colon),
             ("(", Tok::LParen),
             (")", Tok::RParen),
             ("[", Tok::LBrack),
             ("]", Tok::RBrack),
             ("{", Tok::LCurly),
             ("}", Tok::RCurly),
+            (";", Tok::Semicolon),
         ]
     }
 
     fn scan(&mut self) -> Option<TokenItem> {
         self.consume_non_syntatic();
         let to_scan = self.to_scan();
+        if to_scan.is_empty() {
+            return None;
+        }
+        let next_char = to_scan.chars().next().unwrap();
+
         if to_scan.starts_with('"') {
             return self.match_string();
         } else if to_scan.starts_with('\'') {
@@ -120,8 +128,15 @@ impl<'input> Lexer<'input> {
             return Some(token);
         } else if let Some(id) = self.match_id() {
             return Some(id);
+        } else {
+            let start = self.pos;
+            self.advance(1);
+            return Some(Err(Error::new_span(
+                start,
+                self.pos,
+                format!("Unable to handle character: '{next_char}'"),
+            )));
         }
-        None
     }
 
     fn to_scan(&self) -> &str {
@@ -133,14 +148,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let start = self.pos;
-        let mut ci = self.to_scan().char_indices();
-        let (_, c) = ci.next().unwrap();
+        let c = self.to_scan().chars().next().unwrap();
         let end = self.forward_pos(1).unwrap();
         return Some((c, SrcSpan::new(start, end)));
     }
 
     fn forward_pos(&self, nchars: usize) -> Result<Pos, usize> {
-        let mut ci = self.to_scan().char_indices();
+        let mut ci = self.to_scan().char_indices().peekable();
         let mut res = self.pos.clone();
         for i in 0..nchars {
             match ci.next() {
@@ -152,14 +166,14 @@ impl<'input> Lexer<'input> {
                     } else {
                         res.col += 1;
                     }
-                    if let Some((next_offset, _)) = ci.clone().peekable().next() {
-                        res.offset = next_offset;
-                    } else {
-                        // We have reached the EOF.
-                        res.offset = self.to_scan().len();
-                    }
                 }
             }
+        }
+        if let Some((next_offset, _)) = ci.peek() {
+            res.offset += *next_offset;
+        } else {
+            // We have reached the EOF.
+            res.offset = self.sequence.len();
         }
         Ok(res)
     }
@@ -203,7 +217,7 @@ impl<'input> Lexer<'input> {
         self.pos.offset - start.offset
     }
     fn consume_line_comment(&mut self) -> usize {
-        if self.to_scan().starts_with("//") {
+        if !self.to_scan().starts_with("//") {
             return 0;
         }
 
@@ -220,7 +234,7 @@ impl<'input> Lexer<'input> {
         return self.pos.offset - start.offset;
     }
     fn consume_block_comment(&mut self) -> usize {
-        if self.to_scan().starts_with("/*") {
+        if !self.to_scan().starts_with("/*") {
             return 0;
         }
 
@@ -343,22 +357,22 @@ impl<'input> Lexer<'input> {
                 res.push(c);
             } else if self.to_scan().starts_with('\\') {
                 let end = self.forward_pos(1).unwrap();
-                return Some(Err(Error::new_span(self.pos, end, "Invalid escape sequence.")));
+                return Some(Err(Error::new_span(
+                    self.pos,
+                    end,
+                    "Invalid escape sequence.",
+                )));
             } else if let Some(c) = self.to_scan().chars().next() {
+                self.advance(1);
                 res.push(c);
             } else {
-                return Some(Err(Error::new_span(start, self.pos, "String literal reaches end of file.")));
+                return Some(Err(Error::new_span(
+                    start,
+                    self.pos,
+                    "String literal reaches end of file.",
+                )));
             }
         }
-        let rquote = self.peek_next().and_then(|(c, _)| Some(c));
-        if rquote.is_none() || rquote.unwrap() != '\"' {
-            return Some(Err(Error::new_span(
-                start,
-                self.pos,
-                "String literal not enclosed.",
-            )));
-        }
-        self.advance(1);
         Some(Ok((start, Tok::String(res), self.pos)))
     }
 }

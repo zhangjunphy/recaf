@@ -30,8 +30,7 @@ fn lex(file: &String) {
         panic!("Error reading {}: {}", file, msg);
     }
 
-    let mut lexer = Lexer::new(file);
-
+    let mut lexer = Lexer::new(&content);
     while let Some(tok_or_err) = lexer.next() {
         match tok_or_err {
             Ok((_, tok, _)) => println!("{:?}", tok),
