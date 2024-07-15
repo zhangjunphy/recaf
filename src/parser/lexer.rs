@@ -1,7 +1,7 @@
 use crate::error::Error;
-use crate::source_pos as sp;
-use std::collections::BTreeSet;
+use crate::source_pos::{Pos, SrcSpan};
 use regex::Regex;
+use std::collections::BTreeSet;
 
 #[derive(Clone)]
 pub enum Tok {
@@ -46,19 +46,19 @@ pub enum Tok {
 
 pub struct Lexer<'input> {
     sequence: &'input str,
-    pos: sp::Pos,
+    pos: Pos,
     token_map: Vec<(&'input str, Tok)>,
     whitespace: BTreeSet<char>,
 }
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
-type TokenItem = Spanned<Tok, sp::Pos, Error>;
+type TokenItem = Spanned<Tok, Pos, Error>;
 
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
         Lexer {
             sequence: input,
-            pos: sp::Pos::new(0, 0, 0),
+            pos: Pos::new(0, 0, 0),
             token_map: Lexer::token_map(),
             whitespace: BTreeSet::from([' ', '\n', '\t', '\r']),
         }
@@ -110,16 +110,12 @@ impl<'input> Lexer<'input> {
     }
 
     fn scan(&mut self) -> Option<TokenItem> {
-        self.consume_space();
+        self.consume_non_syntatic();
         let to_scan = self.to_scan();
         if to_scan.starts_with('"') {
             return self.match_string();
         } else if to_scan.starts_with('\'') {
             return self.match_char();
-        } else if to_scan.starts_with("/*") {
-            return self.match_block_comment();
-        } else if to_scan.starts_with("//") {
-            return self.match_line_comment();
         } else if let Some(token) = self.match_token() {
             return Some(token);
         } else if let Some(id) = self.match_id() {
@@ -132,32 +128,35 @@ impl<'input> Lexer<'input> {
         &self.sequence[self.pos.offset..]
     }
 
-    fn peek_next(&self) -> Option<char> {
+    fn peek_next(&self) -> Option<(char, SrcSpan)> {
         if self.sequence.len() <= self.pos.offset {
             return None;
         }
-        self.sequence[self.pos.offset..].chars().next()
+        let start = self.pos;
+        let mut ci = self.to_scan().char_indices();
+        let (_, c) = ci.next().unwrap();
+        let end = self.forward_pos(1).unwrap();
+        return Some((c, SrcSpan::new(start, end)));
     }
 
-    fn forward_pos(&self, nchars: usize) -> Result<sp::Pos, usize> {
-        let to_scan = self.to_scan();
-        let char_count = to_scan.chars().count();
+    fn forward_pos(&self, nchars: usize) -> Result<Pos, usize> {
+        let mut ci = self.to_scan().char_indices();
         let mut res = self.pos.clone();
         for i in 0..nchars {
-            match to_scan.char_indices().nth(i) {
+            match ci.next() {
                 None => return Err(i),
-                Some((offset, char)) => {
-                    if char == '\n' {
+                Some((offset, c)) => {
+                    assert!(offset == self.pos.offset, "Offset mismatch in lexer.");
+                    if c == '\n' {
                         res.row += 1;
                         res.col = 0;
                     } else {
                         res.col += 1;
                     }
-                    res.offset += offset;
-                    if i + 1 < char_count {
-                        let (next_offset, _) = to_scan.char_indices().nth(i+1).unwrap();
+                    if let Some((next_offset, _)) = ci.clone().peekable().next() {
                         res.offset = next_offset;
                     } else {
+                        // We have reached the EOF.
                         res.offset = self.to_scan().len();
                     }
                 }
@@ -166,30 +165,85 @@ impl<'input> Lexer<'input> {
         Ok(res)
     }
 
-    fn advance(&mut self, nchars: usize) -> Result<sp::Pos, usize> {
+    fn advance(&mut self, nchars: usize) -> Result<Pos, usize> {
         self.forward_pos(nchars).and_then(|p| {
             self.pos = p;
             Ok(p)
         })
     }
 
-    fn consume_space(&mut self) {
+    fn consume_non_syntatic(&mut self) -> bool {
+        let mut res: bool = false;
+        loop {
+            let consumed =
+                self.consume_space() + self.consume_line_comment() + self.consume_block_comment();
+            res = if consumed > 0 { true } else { res };
+            if consumed == 0 {
+                break;
+            }
+        }
+        res
+    }
+    fn consume_space(&mut self) -> usize {
+        let start = self.pos;
         loop {
             let next = self.peek_next();
             match next {
-                None => return,
-                Some(c) =>
+                None => break,
+                Some(c) => {
                     if self.whitespace.contains(&c) {
                         assert!(self.advance(1).is_ok());
+                    } else {
+                        break;
                     }
+                }
             }
         }
+        self.pos.offset - start.offset
+    }
+    fn consume_line_comment(&mut self) -> usize {
+        if self.to_scan().starts_with("//") {
+            return 0;
+        }
+
+        let start = self.pos;
+        self.advance(2);
+        while !self.to_scan().is_empty() && !self.to_scan().starts_with('\n') {
+            self.advance(1);
+        }
+        if self.to_scan().starts_with('\n') {
+            self.advance(1);
+        } else {
+            assert!(self.to_scan().is_empty());
+        }
+        return self.pos.offset - start.offset;
+    }
+    fn consume_block_comment(&mut self) -> usize {
+        if self.to_scan().starts_with("/*") {
+            return 0;
+        }
+
+        let start = self.pos;
+        assert!(self.to_scan().starts_with("/*"));
+        let mut depth: i32 = 0;
+        loop {
+            if self.to_scan().starts_with("/*") {
+                self.advance(2);
+                depth += 1;
+            } else if self.to_scan().starts_with("*/") {
+                self.advance(2);
+                depth -= 1;
+            }
+
+            if depth <= 0 {
+                break;
+            }
+        }
+        assert!(depth == 0);
+        return self.pos.offset - start.offset;
     }
 
     fn match_token(&mut self) -> Option<TokenItem> {
-        if self.sequence.chars().count() <= self.pos.offset {
-            return None;
-        }
         let mut res: Option<TokenItem> = None;
         let mut nchars = 0;
         for (pattern, tok) in &self.token_map {
@@ -198,6 +252,7 @@ impl<'input> Lexer<'input> {
                 let end = self.forward_pos(nchars);
                 assert!(end.is_ok());
                 res = Some(Ok((self.pos, tok.clone(), end.unwrap())));
+                break;
             }
         }
         assert!(self.advance(nchars).is_ok());
@@ -222,7 +277,7 @@ impl<'input> Lexer<'input> {
             self.advance(2).ok()?;
             return Some('"');
         } else {
-            return None
+            return None;
         }
     }
     fn match_id(&mut self) -> Option<TokenItem> {
@@ -230,84 +285,85 @@ impl<'input> Lexer<'input> {
         let m = re.find(self.to_scan())?;
         let id = m.as_str().to_string();
         let start = self.pos;
-        let end = self.advance(id.chars().count()).ok()?;
+        let end = self.advance(id.chars().count()).unwrap();
         Some(Ok((start, Tok::ID(id), end)))
     }
     fn match_char(&mut self) -> Option<TokenItem> {
         let start = self.pos;
-        let lquote = self.peek_next();
-        assert!(lquote.is_some() && lquote.unwrap() == '\'');
-        self.advance(1).ok()?;
-        let c: char;
+        let (lquote, _) = self.peek_next()?;
+        if lquote != '\'' {
+            return None;
+        }
+        assert!(self.advance(1).is_ok());
+        let res: char;
         if let Some(ec) = self.match_escape_char() {
-            c = ec;
+            res = ec;
         } else if self.to_scan().starts_with('\\') {
-            return None
+            let end = self.forward_pos(1);
+            return Some(Err(Error::new_span(
+                start,
+                end.unwrap(),
+                "Invalid escape sequence.",
+            )));
+        } else if let Some((c, _)) = self.peek_next() {
+            res = c;
+            assert!(self.advance(1).is_ok());
         } else {
-            c = self.peek_next()?;
-            self.advance(1).ok()?;
+            return Some(Err(Error::new_span(
+                start,
+                self.pos,
+                "Char literal reaches end of file.",
+            )));
         }
-        let rquote = self.peek_next()?;
-        if rquote != '\'' {
-            return Some(Err(Error::new("Invalid escape sequence.")));
+        let rquote = self.peek_next();
+        if rquote.is_none() || rquote.unwrap().0 != '\'' {
+            return Some(Err(Error::new_span(
+                start,
+                self.pos,
+                "Char literal not enclosed.",
+            )));
         }
-        Some(Ok((start, Tok::Char(c), self.pos)))
+        assert!(self.advance(1).is_ok());
+        Some(Ok((start, Tok::Char(res), self.pos)))
     }
     fn match_string(&mut self) -> Option<TokenItem> {
         let start = self.pos;
-        let lquote = self.peek_next();
-        assert!(lquote.is_some() && lquote.unwrap() == '\"');
-        self.advance(1).ok()?;
+        let (lquote, _) = self.peek_next()?;
+        if lquote != '\"' {
+            return None;
+        }
+        assert!(self.advance(1).is_ok());
         let mut res = String::new();
         loop {
-            if self.to_scan().is_empty() {
-                return Some(Err(Error::new("String literal reaches end of file.")));
-            }
-
             if self.to_scan().starts_with('\"') {
-                self.advance(1).ok()?;
+                assert!(self.advance(1).is_ok());
                 break;
             } else if let Some(c) = self.match_escape_char() {
                 res.push(c);
             } else if self.to_scan().starts_with('\\') {
-                return Some(Err(Error::new("Invalid escape sequence.")));
+                let end = self.forward_pos(1).unwrap();
+                return Some(Err(Error::new_span(self.pos, end, "Invalid escape sequence.")));
+            } else if let Some(c) = self.to_scan().chars().next() {
+                res.push(c);
             } else {
-                res.push(self.to_scan().chars().next()?);
+                return Some(Err(Error::new_span(start, self.pos, "String literal reaches end of file.")));
             }
         }
+        let rquote = self.peek_next().and_then(|(c, _)| Some(c));
+        if rquote.is_none() || rquote.unwrap() != '\"' {
+            return Some(Err(Error::new_span(
+                start,
+                self.pos,
+                "String literal not enclosed.",
+            )));
+        }
+        assert!(self.advance(1).is_ok());
         Some(Ok((start, Tok::String(res), self.pos)))
-    }
-    fn match_line_comment(&mut self) -> Option<TokenItem> {
-        assert!(self.to_scan().starts_with("//"));
-        self.advance(2).ok()?;
-        while !self.to_scan().starts_with('\n') {
-            self.advance(1).ok()?;
-        }
-        None
-    }
-    fn match_block_comment(&mut self) -> Option<TokenItem> {
-        assert!(self.to_scan().starts_with("/*"));
-        let mut depth: i32 = 0;
-        loop {
-            if self.to_scan().starts_with("/*") {
-                self.advance(2).ok()?;
-                depth += 1;
-            } else if self.to_scan().starts_with("*/") {
-                self.advance(2).ok()?;
-                depth -= 1;
-            }
-
-            if depth <= 0 {
-                break;
-            }
-        }
-        assert!(depth == 0);
-        None
     }
 }
 
 impl<'input> Iterator for Lexer<'input> {
-    type Item = Spanned<Tok, sp::Pos, Error>;
+    type Item = Spanned<Tok, Pos, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scan()

@@ -25,6 +25,12 @@ pub struct SrcSpan {
     pub end: Pos,
 }
 
+impl SrcSpan {
+    pub fn new(start: Pos, end : Pos) -> SrcSpan {
+        SrcSpan{start, end}
+    }
+}
+
 impl fmt::Display for SrcSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}-{}]", self.start, self.end)

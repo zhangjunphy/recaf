@@ -1,4 +1,4 @@
-use crate::source_pos::SrcSpan;
+use crate::source_pos::{Pos, SrcSpan};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -8,9 +8,9 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new_span<S: Into<String>>(range: SrcSpan, msg: S) -> Error {
+    pub fn new_span<S: Into<String>>(start: Pos, end: Pos, msg: S) -> Error {
         Error {
-            range: Some(range),
+            range: Some(SrcSpan::new(start, end)),
             msg: msg.into(),
         }
     }
