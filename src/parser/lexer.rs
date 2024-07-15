@@ -50,6 +50,7 @@ pub struct Lexer<'input> {
     sequence: &'input str,
     pos: Pos,
     token_map: Vec<(&'input str, Tok)>,
+    escape_sequence_map: Vec<(&'input str, char)>,
     whitespace: BTreeSet<char>,
 }
 
@@ -62,7 +63,8 @@ impl<'input> Lexer<'input> {
             sequence: input,
             pos: Pos::new(0, 0, 0),
             token_map: Lexer::token_map(),
-            whitespace: BTreeSet::from([' ', '\n', '\t', '\r']),
+            escape_sequence_map: Lexer::escape_sequence_map(),
+            whitespace: BTreeSet::from_iter(Lexer::whitespace_chars()),
         }
     }
 
@@ -110,6 +112,20 @@ impl<'input> Lexer<'input> {
             ("}", Tok::RCurly),
             (";", Tok::Semicolon),
         ]
+    }
+
+    fn escape_sequence_map() -> Vec<(&'input str, char)> {
+        vec![
+            (r#"\\n"#, '\n'),
+            (r#"\\\\"#, '\\'),
+            (r#"\\t"#, '\t'),
+            (r#"\\'"#, '\''),
+            (r#"\\\""#, '"'),
+        ]
+    }
+
+    fn whitespace_chars() -> Vec<char> {
+        vec![' ', '\n', '\t', '\r']
     }
 
     fn scan(&mut self) -> Option<TokenItem> {
@@ -248,6 +264,8 @@ impl<'input> Lexer<'input> {
             } else if self.to_scan().starts_with("*/") {
                 self.advance(2);
                 depth -= 1;
+            } else {
+                self.advance(1);
             }
 
             if depth <= 0 {
@@ -275,25 +293,17 @@ impl<'input> Lexer<'input> {
     }
 
     fn match_escape_char(&mut self) -> Option<char> {
-        let to_scan = self.to_scan();
-        if to_scan.starts_with("\\n") {
-            self.advance(2);
-            return Some('\n');
-        } else if to_scan.starts_with("\\\\") {
-            self.advance(2);
-            return Some('\\');
-        } else if to_scan.starts_with("\\t") {
-            self.advance(2);
-            return Some('\t');
-        } else if to_scan.starts_with("\\'") {
-            self.advance(2);
-            return Some('\'');
-        } else if to_scan.starts_with("\\\"") {
-            self.advance(2);
-            return Some('"');
-        } else {
-            return None;
+        let mut res: Option<char> = None;
+        let mut nchars = 0;
+        for (pattern, ch) in &self.escape_sequence_map {
+            if self.to_scan().starts_with(pattern) {
+                nchars = pattern.chars().count();
+                res = Some(*ch);
+                break;
+            }
         }
+        self.advance(nchars);
+        res
     }
     fn match_id(&mut self) -> Option<TokenItem> {
         let re = Regex::new(r"^[A-Za-z_][0-9A-Za-z_]*").unwrap();
