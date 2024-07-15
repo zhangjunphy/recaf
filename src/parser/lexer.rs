@@ -3,7 +3,7 @@ use crate::source_pos::{Pos, SrcSpan};
 use regex::Regex;
 use std::collections::BTreeSet;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tok {
     Import,
     If,

@@ -4,10 +4,6 @@ use recaf::parser::lexer::Lexer;
 use std::fs::File;
 use std::io::prelude::*;
 
-#[macro_use]
-extern crate lalrpop_util;
-lalrpop_mod!(pub grammar, "/parser/grammar.rs");
-
 fn main() {
     let args = Args::parse();
     if args.file.is_none() {
@@ -37,14 +33,4 @@ fn lex(file: &String) {
             Err(err) => println!("{}", err.msg),
         }
     }
-}
-
-#[test]
-fn grammar() {
-    let sample = String::from("22");
-    let res = grammar::IntLiteralParser::new().parse(sample.as_str());
-    println!("{}", res.expect(""));
-    assert!(grammar::IntLiteralParser::new()
-        .parse(sample.as_str())
-        .is_ok());
 }
