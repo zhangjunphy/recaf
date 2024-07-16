@@ -94,7 +94,7 @@ pub enum StatementBare {
 
 pub enum Literal {
     Int(i64),
-    Char(u8),
+    Char(char),
     Bool(bool),
 }
 

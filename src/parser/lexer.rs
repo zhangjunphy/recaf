@@ -394,16 +394,3 @@ impl<'input> Iterator for Lexer<'input> {
         self.scan()
     }
 }
-
-/*
-extern {
-    type Location = usize;
-    type Error = lexer::LexicalError;
-
-    enum lexer::Tok {
-        " " => lexer::Tok::Space,
-        "\t" => lexer::Tok::Tab,
-        "\n" => lexer::Tok::Linefeed,
-    }
-}
-*/

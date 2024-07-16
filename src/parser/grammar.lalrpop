@@ -1,7 +1,10 @@
 use std::str::FromStr;
 use crate::parser::ast::*;
+use crate::source_pos::{Pos, SrcSpan};
+use crate::parser::lexer;
+use crate::error;
 
-grammar();
+grammar;
 
 //pub Expr: Box<Expr> = {
 //    <start:@L> <l:Expr> <o:ExprOp> <r:Factor> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
@@ -30,18 +33,58 @@ grammar();
 //
 //Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
 
-pub ID: ID = <start:@L> <id:r"[[:alpha:]][[:alnum:]]+"> <end:@R> => ID{id: id.to_string(), range: None};
+pub ID: ID = <start:@L> <id:"id"> <end:@R> => ID{id: id, range: Some(SrcSpan::new(start, end))};
 
 pub IntLiteral: Literal = {
-    <r"[[:digit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
-    <r"0x[[:xdigit:]]+"> => Literal::Int(i64::from_str(<>).unwrap()),
+    "dec" => Literal::Int(i64::from_str(<>.as_str()).unwrap()),
+    "hex" => Literal::Int(i64::from_str(<>.as_str()).unwrap()),
 };
 
 pub BoolLiteral: Literal = {
-    <"true"> => Literal::Bool(true),
-    <"false"> => Literal::Bool(false),
+    "true" => Literal::Bool(true),
+    "false" => Literal::Bool(false),
 };
 
 pub CharLiteral: Literal = {
-    <r"'[\x20-\x7F]'"> => Literal::Char(<>.chars().nth(1).expect("Malformed char literal: {<>}") as u8)
+    "char" => Literal::Char(<>)
 };
+
+extern {
+    type Location = Pos;
+    type Error = error::Error;
+
+    enum lexer::Tok {
+        "import" => lexer::Tok::Import,
+        "if" => lexer::Tok::If,
+        "for" => lexer::Tok::For,
+        "while" => lexer::Tok::While,
+        "return" => lexer::Tok::Return,
+        "break" => lexer::Tok::Break,
+        "continue" => lexer::Tok::Continue,
+        "int" => lexer::Tok::Int,
+        "bool" => lexer::Tok::Bool,
+        "void" => lexer::Tok::Void,
+        "id" => lexer::Tok::ID(<String>),
+        "true" => lexer::Tok::True,
+        "false" => lexer::Tok::False,
+        "hex" => lexer::Tok::HexLiteral(<String>),
+        "dec" => lexer::Tok::DecLiteral(<String>),
+        "char" => lexer::Tok::Char(<char>),
+        "string" => lexer::Tok::String(<String>),
+        "assign" => lexer::Tok::AssignOp(<String>),
+        "incr" => lexer::Tok::IncrementOp(<String>),
+        "arith" => lexer::Tok::ArithOp(<String>),
+        "rel" => lexer::Tok::RelOp(<String>),
+        "eq" => lexer::Tok::EqOp(<String>),
+        "cond" => lexer::Tok::CondOp(<String>),
+        "?" => lexer::Tok::QMark,
+        ":" => lexer::Tok::Colon,
+        "(" => lexer::Tok::LParen,
+        ")" => lexer::Tok::RParen,
+        "[" => lexer::Tok::LBrack,
+        "]" => lexer::Tok::RBrack,
+        "{" => lexer::Tok::LCurly,
+        "}" => lexer::Tok::RCurly,
+        ";" => lexer::Tok::Semicolon,
+    }
+}
