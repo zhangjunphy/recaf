@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Pos {
     pub offset: usize, // offset of bytes
     pub row: usize,
@@ -19,7 +19,7 @@ impl fmt::Display for Pos {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SrcSpan {
     pub start: Pos,
     pub end: Pos,

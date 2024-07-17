@@ -6,82 +6,103 @@ pub struct Program {
     pub imports: Vec<ImportDecl>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
 pub struct ImportDecl {
     pub id: ID,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
+#[derive(Debug, Clone)]
 pub struct FieldDecl {
-    pub typ: Type,
-    pub field: Field,
-    pub range: Option<SrcSpan>,
+    pub id: ID,
+    pub tpe: Type,
+    pub span: Option<SrcSpan>,
 }
 
 pub struct MethodDecl {
-    pub typ: ReturnType,
-    pub arguments: (Type, ID),
+    pub id: ID,
+    pub tpe: Type,
+    pub arguments: Vec<FieldDecl>,
     pub block: Block,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Block {
     pub fields: Vec<FieldDecl>,
     pub statements: Vec<Statement>,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Statement {
     pub statement: Statement_,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Expr {
     pub expr: Expr_,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct ID {
     pub id: String,
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Assign {
     pub location: Location,
-    pub expr: Expr,
+    pub expr: AssignExpr,
 }
 
+#[derive(Debug, Clone)]
+pub enum AssignExpr {
+    Assign(Expr),
+    AssignAdd(Expr),
+    AssignSub(Expr),
+    Inc,
+    Dec,
+}
+
+#[derive(Debug, Clone)]
 pub struct If {
     pub pred: Expr,
     pub if_block: Block,
     pub else_block: Option<Block>,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Argument {
     Expr(Expr),
     StringLiteral(String),
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct MethodCall {
     pub name: ID,
     pub arguments: Vec<Argument>,
 }
 
+#[derive(Debug, Clone)]
 pub struct For {
-    pub id: ID,
-    pub init: Expr,
+    pub init: Box<Statement>,
     pub pred: Expr,
-    pub update: Assign,
+    pub update: Box<Statement>,
     pub block: Block,
 }
 
+#[derive(Debug, Clone)]
 pub struct While {
     pub pred: Expr,
     pub block: Block,
 }
 
+#[derive(Debug, Clone)]
 pub enum Statement_ {
     Assign(Assign),
     MethodCall(MethodCall),
@@ -93,7 +114,7 @@ pub enum Statement_ {
     Continue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {
     Int(i64),
     Char(char),
@@ -105,42 +126,46 @@ impl fmt::Display for Literal {
         match self {
             Literal::Int(v) => write!(f, "{}", v),
             Literal::Char(v) => write!(f, "{}", v),
-            Literal::Bool(v) => write!(f, "{}", v)
+            Literal::Bool(v) => write!(f, "{}", v),
         }
     }
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Expr_ {
     Location(Location),
     MethodCall(MethodCall),
     Literal(Literal),
     Len(ID),
     BinOp(Box<Expr>, BinOp, Box<Expr>),
-    Neg(Box<Expr>),
-    Not(Box<Expr>),
+    NNeg(Box<Expr>), // Numerical negation
+    LNeg(Box<Expr>), // Logical negation
     TernaryOp(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Location {
     Scalar(ID),
     Vector(ID, Box<Expr>),
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Type {
+    Void,
     Int,
     Bool,
+    Char,
+    Ptr(Box<Type>),
+    Array(Box<Type>, usize),
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum Field {
     Scalar(ID),
     Vector(ID, usize),
 }
 
-pub enum ReturnType {
-    Void,
-    Return(Type),
-}
-
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum BinOp {
     Mul,
     Div,
@@ -157,11 +182,4 @@ pub enum BinOp {
 
     And,
     Or,
-}
-
-#[macro_export]
-macro_rules! expr {
-    ($ii:ident, $s:expr, $e:expr $(, $x:ident )*) => {
-        Expr {expr: Expr_ ::$ii ( $( $x ),* ), range: SrcSpan {start: $s, end: $e} }
-    }
 }

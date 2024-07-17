@@ -6,48 +6,275 @@ use crate::error;
 
 grammar;
 
-//pub Expr: Box<Expr> = {
-//    <start:@L> <l:Expr> <o:ExprOp> <r:Factor> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
-//    Factor,
-//};
-//
-//ExprOp: Opcode = {
-//    "+" => Opcode::Add,
-//    "-" => Opcode::Sub,
-//};
-//
-//Factor: Box<Expr> = {
-//    <start:@L> <l:Factor> <o:FactorOp> <r:Term> <end:@R> => Box::new(expr![Op, start, end, l, o, r]),
-//    Term,
-//};
-//
-//FactorOp: Opcode = {
-//    "*" => Opcode::Mul,
-//    "/" => Opcode::Div,
-//};
-//
-//Term: Box<Expr> = {
-//    <start:@L> <n:Num> <end:@R> => Box::new(expr![Number, start, end, n]),
-//    "(" <Expr> ")",
-//};
-//
-//Num: i64 = <r"[0-9]+"> => i64::from_str(<>).unwrap();
+pub ID: ID = <start:@L> <id:"id"> <end:@R> =>
+    ID{ id: id, span: Some(SrcSpan::new(start, end)) };
 
-pub ID: ID = <start:@L> <id:"id"> <end:@R> => ID{id: id, range: Some(SrcSpan::new(start, end))};
+pub Int: i64 = {
+    "dec" => i64::from_str(<>.as_str()).unwrap(),
+    "hex" => i64::from_str(<>.as_str()).unwrap(),
+}
 
-pub IntLiteral: Literal = {
-    "dec" => Literal::Int(i64::from_str(<>.as_str()).unwrap()),
-    "hex" => Literal::Int(i64::from_str(<>.as_str()).unwrap()),
-};
+pub Literal: Literal = {
+    <i: Int> => Literal::Int(i),
 
-pub BoolLiteral: Literal = {
     "true" => Literal::Bool(true),
     "false" => Literal::Bool(false),
+
+    "char" => Literal::Char(<>),
 };
 
-pub CharLiteral: Literal = {
-    "char" => Literal::Char(<>)
-};
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T> => {
+        v.push(e);
+        v
+    }
+}
+
+pub Argument: Argument = {
+    "string" => Argument::StringLiteral(<>),
+    <Expr> => Argument::Expr(<>),
+}
+
+pub Location: Location = {
+    <id: ID> => Location::Scalar(id),
+    <id: ID> "[" <offset: Expr> "]" => Location::Vector(id, Box::new(offset)),
+}
+
+pub MethodCall: MethodCall = {
+    <id: ID> "(" ")" => MethodCall{name: id, arguments: Vec::new()},
+    <id: ID> "(" <args: Comma<Argument>> ")" => MethodCall{name: id, arguments: args},
+}
+
+pub Expr: Expr = {
+    #[precedence(level="0")]
+    <start:@L> <loc: Location> <end:@R> => Expr {
+        expr: Expr_::Location(loc),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <c: MethodCall> <end:@R> => Expr {
+        expr: Expr_::MethodCall(c),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <lit: Literal> <end:@R> => Expr {
+        expr: Expr_::Literal(lit),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "len" "(" <id: ID> ")" <end:@R> => Expr {
+        expr: Expr_::Len(id),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="1")]
+    #[assoc(side="left")]
+    <start:@L> "-" <e:Expr> <end:@R> => Expr {
+        expr: Expr_::NNeg(Box::new(e)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    <start:@L> "!" <e:Expr> <end:@R> => Expr {
+        expr: Expr_::LNeg(Box::new(e)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="2")]
+    #[assoc(side="left")]
+    <start:@L> <l:Expr> "*" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::Mul, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> "/" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::Div, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> "%" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::Mod, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="3")]
+    #[assoc(side="left")]
+    <start:@L> <l:Expr> "+" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::Add, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> "-" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::Sub, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="4")]
+    #[assoc(side="left")]
+    <start:@L> <l:Expr> "<" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::LT, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> "<=" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::LE, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> ">" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::GT, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> ">=" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::GE, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="5")]
+    #[assoc(side="left")]
+    <start:@L> <l:Expr> "==" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::EQ, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <l:Expr> "!=" <r:Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::NE, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="6")]
+    #[assoc(side="left")]
+    <start:@L> <l: Expr> "&&" <r: Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::And, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+
+    #[precedence(level="7")]
+    #[assoc(side="left")]
+    <start:@L> <l: Expr> "||" <r: Expr> <end:@R> => Expr {
+        expr: Expr_::BinOp(Box::new(l), BinOp::Or, Box::new(r)),
+        span: Some(SrcSpan::new(start, end)),
+    },
+}
+
+pub AssignExpr: AssignExpr = {
+    "=" <e: Expr> => AssignExpr::Assign(e),
+    "+=" <e: Expr> => AssignExpr::AssignAdd(e),
+    "-=" <e: Expr> => AssignExpr::AssignSub(e),
+    "++" => AssignExpr::Inc,
+    "--" => AssignExpr::Dec,
+}
+
+pub SingleLineStmt: Statement = {
+    <start:@L> <loc: Location> <e: AssignExpr> ";" <end:@R> => Statement {
+        statement: Statement_::Assign(Assign{location: loc, expr: e}),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <c: MethodCall> ";" <end:@R> => Statement {
+        statement: Statement_::MethodCall(c),
+        span: Some(SrcSpan::new(start, end)),
+    },
+}
+
+pub Statement: Statement = {
+    <SingleLineStmt> => <>,
+    <start:@L> "if" "(" <e: Expr>  ")" <bi: Block> "else" <be: Block> ";"? <end:@R> => Statement {
+        statement: Statement_::If(If{pred: e, if_block: bi, else_block: Some(be)}),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "if" "(" <e: Expr>  ")" <b: Block> ";"? <end:@R> => Statement {
+        statement: Statement_::If(If{pred: e, if_block: b, else_block: None}),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "for" "(" <init: SingleLineStmt> ";" <pred: Expr> ";" <update: SingleLineStmt>  ")" <b: Block> ";"? <end:@R> => Statement {
+        statement: Statement_::For(For {
+            init: Box::new(init),
+            pred: pred,
+            update: Box::new(update),
+            block: b,
+        }),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "while" "(" <pred: Expr> ")" <b: Block> ";"? <end:@R> => Statement {
+        statement: Statement_::While(While {
+            pred: pred,
+            block: b,
+        }),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "return" <e: Expr?> ";" <end:@R> => Statement {
+        statement: Statement_::Return(e),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "break" ";" <end:@R> => Statement {
+        statement: Statement_::Break,
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> "continue" ";" <end:@R> => Statement {
+        statement: Statement_::Continue,
+        span: Some(SrcSpan::new(start, end)),
+    },
+}
+
+pub Type: Type = {
+    "int" => Type::Int,
+    "bool" => Type::Bool,
+    "void" => Type::Void,
+}
+
+pub Field: (ID, Option<usize>, SrcSpan) = {
+    <start:@L> <id: ID> <end:@R> => (id, None, SrcSpan::new(start, end)),
+    <start:@L> <id: ID> "[" <size: Int> "]" <end:@R> =>
+        (id, Some(size as usize), SrcSpan::new(start, end)),
+}
+
+pub ImportDecl: ImportDecl = {
+    <start:@L> "import" <id: ID> ";" <end:@R> =>
+        ImportDecl{id: id, span: Some(SrcSpan::new(start, end))},
+}
+
+pub FieldDeclList: Vec<FieldDecl> = {
+    <t: Type> <fields: Comma<Field>> ";" =>
+        fields.into_iter().map(|(id, size, span)| {
+            match size {
+                None => FieldDecl{id: id, tpe: t.clone(), span: Some(span)},
+                Some(size) =>
+                    FieldDecl{id: id, tpe: Type::Array(Box::new(t.clone()), size), span: Some(span)}
+            }
+        }).collect(),
+}
+
+pub Block : Block = {
+    <start:@L> "{" <fields: FieldDeclList*> <stmts: Statement*>  "}" <end:@R> =>
+        Block {
+            fields: fields.into_iter().flatten().collect(),
+            statements: stmts,
+            span: Some(SrcSpan::new(start, end))
+        },
+}
+
+pub MethodArg: FieldDecl = {
+    <start:@L> <t: Type> <id: ID> <end:@R> => FieldDecl {
+        id: id, tpe: t, span: Some(SrcSpan::new(start, end)),
+    },
+}
+
+pub MethodDecl: MethodDecl = {
+    <start:@L> <t: Type> <id: ID> "(" ")" <b: Block> <end:@R> => MethodDecl {
+        id: id,
+        tpe: t,
+        arguments: Vec::new(),
+        block: b,
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <t: Type> <id: ID> "(" <args: Comma<MethodArg>> ")" <b: Block> <end:@R> => MethodDecl {
+        id: id,
+        tpe: t,
+        arguments: args,
+        block: b,
+        span: Some(SrcSpan::new(start, end)),
+    },
+}
+
+pub Program: Program = {
+    <start:@L> <imports: ImportDecl*> <fields: FieldDeclList*> <methods: MethodDecl*> <end:@R> =>
+        Program {
+            imports: imports,
+            fields: fields.into_iter().flatten().collect(),
+            methods: methods,
+            span: Some(SrcSpan::new(start, end)),
+        }
+}
 
 extern {
     type Location = Pos;
@@ -56,6 +283,7 @@ extern {
     enum lexer::Tok {
         "import" => lexer::Tok::Import,
         "if" => lexer::Tok::If,
+        "else" => lexer::Tok::Else,
         "for" => lexer::Tok::For,
         "while" => lexer::Tok::While,
         "return" => lexer::Tok::Return,
@@ -71,12 +299,25 @@ extern {
         "dec" => lexer::Tok::DecLiteral(<String>),
         "char" => lexer::Tok::Char(<char>),
         "string" => lexer::Tok::String(<String>),
-        "assign" => lexer::Tok::AssignOp(<String>),
-        "incr" => lexer::Tok::IncrementOp(<String>),
-        "arith" => lexer::Tok::ArithOp(<String>),
-        "rel" => lexer::Tok::RelOp(<String>),
-        "eq" => lexer::Tok::EqOp(<String>),
-        "cond" => lexer::Tok::CondOp(<String>),
+        "<=" => lexer::Tok::LE,
+        ">=" => lexer::Tok::GE,
+        "==" => lexer::Tok::EQ,
+        "!=" => lexer::Tok::NE,
+        "&&" => lexer::Tok::And,
+        "||" => lexer::Tok::Or,
+        "!" => lexer::Tok::Negate,
+        "=" => lexer::Tok::Assign,
+        "+=" => lexer::Tok::AssignAdd,
+        "-=" => lexer::Tok::AssignSub,
+        "++" => lexer::Tok::Inc1,
+        "--" => lexer::Tok::Dec1,
+        "<" => lexer::Tok::LT,
+        ">" => lexer::Tok::GT,
+        "*" => lexer::Tok::Mul,
+        "/" => lexer::Tok::Div,
+        "+" => lexer::Tok::Add,
+        "-" => lexer::Tok::Sub,
+        "%" => lexer::Tok::Mod,
         "?" => lexer::Tok::QMark,
         ":" => lexer::Tok::Colon,
         "(" => lexer::Tok::LParen,
@@ -85,6 +326,8 @@ extern {
         "]" => lexer::Tok::RBrack,
         "{" => lexer::Tok::LCurly,
         "}" => lexer::Tok::RCurly,
+        "," => lexer::Tok::Comma,
         ";" => lexer::Tok::Semicolon,
+        "len" => lexer::Tok::Len,
     }
 }

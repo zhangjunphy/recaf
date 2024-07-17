@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 pub enum Tok {
     Import,
     If,
+    Else,
     For,
     While,
     Return,
@@ -26,12 +27,30 @@ pub enum Tok {
     Char(char),
     String(String),
 
-    AssignOp(String),
-    IncrementOp(String),
-    ArithOp(String),
-    RelOp(String),
-    EqOp(String),
-    CondOp(String),
+    Mul,
+    Div,
+    Add,
+    Sub,
+    Mod,
+
+    LT,
+    GT,
+    LE,
+    GE,
+    EQ,
+    NE,
+
+    And,
+    Or,
+
+    Negate,
+
+    Assign,
+    AssignAdd,
+    AssignSub,
+
+    Inc1,
+    Dec1,
 
     QMark,
     Colon,
@@ -43,7 +62,10 @@ pub enum Tok {
     LCurly,
     RCurly,
 
+    Comma,
     Semicolon,
+
+    Len,
 }
 
 pub struct Lexer<'input> {
@@ -69,12 +91,10 @@ impl<'input> Lexer<'input> {
     }
 
     fn token_map() -> Vec<(&'input str, Tok)> {
-        // We have to be careful to put longer patterns to the front so they get matched
-        // before some of its subsequences.
-        // There might be some better design but this should work for the moment.
-        vec![
-            ("if", Tok::If),
+        let mut res = vec![
             ("import", Tok::Import),
+            ("if", Tok::If),
+            ("else", Tok::Else),
             ("for", Tok::For),
             ("while", Tok::While),
             ("return", Tok::Return),
@@ -85,23 +105,24 @@ impl<'input> Lexer<'input> {
             ("void", Tok::Void),
             ("true", Tok::True),
             ("false", Tok::False),
-            ("==", Tok::EqOp("==".to_string())),
-            ("!=", Tok::EqOp("!=".to_string())),
-            ("+=", Tok::AssignOp("+=".to_string())),
-            ("-=", Tok::AssignOp("-=".to_string())),
-            ("=", Tok::AssignOp("=".to_string())),
-            ("++", Tok::IncrementOp("++".to_string())),
-            ("--", Tok::IncrementOp("--".to_string())),
-            ("+", Tok::ArithOp("+".to_string())),
-            ("-", Tok::ArithOp("-".to_string())),
-            ("*", Tok::ArithOp("*".to_string())),
-            ("/", Tok::ArithOp("/".to_string())),
-            ("<=", Tok::RelOp("<=".to_string())),
-            (">=", Tok::RelOp(">=".to_string())),
-            ("<", Tok::RelOp("<".to_string())),
-            (">", Tok::RelOp(">".to_string())),
-            ("&&", Tok::CondOp("&&".to_string())),
-            ("||", Tok::CondOp("||".to_string())),
+            ("==", Tok::EQ),
+            ("!=", Tok::NE),
+            ("+=", Tok::AssignAdd),
+            ("-=", Tok::AssignSub),
+            ("=", Tok::Assign),
+            ("++", Tok::Inc1),
+            ("--", Tok::Dec1),
+            ("+", Tok::Add),
+            ("-", Tok::Sub),
+            ("*", Tok::Mul),
+            ("/", Tok::Div),
+            ("<=", Tok::LE),
+            (">=", Tok::GE),
+            ("<", Tok::LT),
+            (">", Tok::GT),
+            ("&&", Tok::And),
+            ("||", Tok::Or),
+            ("!", Tok::Negate),
             ("?", Tok::QMark),
             (":", Tok::Colon),
             ("(", Tok::LParen),
@@ -110,8 +131,16 @@ impl<'input> Lexer<'input> {
             ("]", Tok::RBrack),
             ("{", Tok::LCurly),
             ("}", Tok::RCurly),
+            (",", Tok::Comma),
             (";", Tok::Semicolon),
-        ]
+            ("len", Tok::Len),
+        ];
+        // We have to be careful to put longer patterns to the front so they get matched
+        // before some of its subsequences.
+        // There might be some better design but this should work for the moment.
+        res.sort_by(|a, b| a.0.cmp(b.0).reverse());
+
+        res
     }
 
     fn escape_sequence_map() -> Vec<(&'input str, char)> {
