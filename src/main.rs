@@ -1,6 +1,7 @@
 use clap::Parser;
 use recaf::cli::{Args, Stage};
 use recaf::parser::lexer::Lexer;
+use recaf::parser::grammar::ProgramParser;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -13,6 +14,7 @@ fn main() {
     let file = args.file.unwrap();
     match args.stage {
         Stage::Lex => lex(&file),
+        Stage::Parse => parse(&file),
     }
 }
 
@@ -30,7 +32,26 @@ fn lex(file: &String) {
     while let Some(tok_or_err) = lexer.next() {
         match tok_or_err {
             Ok((_, tok, _)) => println!("{:?}", tok),
-            Err(err) => println!("{}", err.msg),
+            Err(err) => eprintln!("{}", err.msg),
         }
+    }
+}
+
+
+fn parse(file: &String) {
+    let mut content = String::new();
+    let mut f = match File::open(file) {
+        Err(msg) => panic!("Could not open {}: {}", file, msg),
+        Ok(file) => file,
+    };
+    if let Err(msg) = f.read_to_string(&mut content) {
+        panic!("Error reading {}: {}", file, msg);
+    }
+
+    let ast = ProgramParser::new().parse(Lexer::new(&content));
+
+    match ast {
+        Ok(program) => println!("{:?}", program),
+        Err(err) => eprintln!("{:?}", err),
     }
 }

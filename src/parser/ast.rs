@@ -2,6 +2,7 @@ use crate::source_pos::SrcSpan;
 use std::fmt;
 
 // AST Root
+#[derive(Debug)]
 pub struct Program {
     pub imports: Vec<ImportDecl>,
     pub fields: Vec<FieldDecl>,
@@ -9,6 +10,7 @@ pub struct Program {
     pub span: Option<SrcSpan>,
 }
 
+#[derive(Debug)]
 pub struct ImportDecl {
     pub id: ID,
     pub span: Option<SrcSpan>,
@@ -21,6 +23,7 @@ pub struct FieldDecl {
     pub span: Option<SrcSpan>,
 }
 
+#[derive(Debug)]
 pub struct MethodDecl {
     pub id: ID,
     pub tpe: Type,

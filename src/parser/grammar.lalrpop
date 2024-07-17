@@ -145,6 +145,13 @@ pub Expr: Expr = {
         expr: Expr_::BinOp(Box::new(l), BinOp::Or, Box::new(r)),
         span: Some(SrcSpan::new(start, end)),
     },
+
+    #[precedence(level="8")]
+    #[assoc(side="right")]
+    <start:@L> <pred: Expr> "?" <t: Expr> ":" <f: Expr> <end:@R> => Expr {
+        expr: Expr_::TernaryOp(Box::new(pred), Box::new(t), Box::new(f)),
+        span: Some(SrcSpan::new(start, end)),
+    }
 }
 
 pub AssignExpr: AssignExpr = {
