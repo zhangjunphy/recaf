@@ -11,7 +11,7 @@ pub ID: ID = <start:@L> <id:"id"> <end:@R> =>
 
 pub Int: i64 = {
     "dec" => i64::from_str(<>.as_str()).unwrap(),
-    "hex" => i64::from_str(<>.as_str()).unwrap(),
+    "hex" => i64::from_str_radix(<>.as_str(), 16).unwrap(),
 }
 
 pub Literal: Literal = {

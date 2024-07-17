@@ -28,7 +28,7 @@ mod tests {
         lexer = Lexer::new("0x22");
         assert_eq!(
             lexer.next().unwrap().unwrap().1,
-            Tok::HexLiteral("0x22".to_string())
+            Tok::HexLiteral("22".to_string())
         );
     }
 

@@ -169,11 +169,11 @@ impl<'input> Lexer<'input> {
             return self.match_string();
         } else if to_scan.starts_with('\'') {
             return self.match_char();
-        } else if let token@Some(_) = self.match_token() {
+        } else if let token @ Some(_) = self.match_token() {
             return token;
-        } else if let id@Some(_) = self.match_id() {
+        } else if let id @ Some(_) = self.match_id() {
             return id;
-        } else if let num@Some(_) = self.match_num() {
+        } else if let num @ Some(_) = self.match_num() {
             return num;
         } else {
             let start = self.pos;
@@ -351,7 +351,11 @@ impl<'input> Lexer<'input> {
     fn match_num(&mut self) -> Option<TokenItem> {
         let hex_re = Regex::new(r"^0x[0-9A-Fa-f]*").unwrap();
         if let Some((start, hex, end)) = self.match_regex(&hex_re) {
-            return Some(Ok((start, Tok::HexLiteral(hex), end)));
+            return Some(Ok((
+                start,
+                Tok::HexLiteral(hex.trim_start_matches("0x").to_string()),
+                end,
+            )));
         }
 
         let dec_re = Regex::new(r"^[0-9]*").unwrap();
