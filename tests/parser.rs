@@ -1,4 +1,4 @@
-use recaf::parser::ast::*;
+use recaf::ast::*;
 use recaf::parser::grammar;
 use recaf::parser::lexer::Lexer;
 

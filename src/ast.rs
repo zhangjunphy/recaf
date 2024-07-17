@@ -1,7 +1,8 @@
 use crate::source_pos::SrcSpan;
 use std::fmt;
+use std::ops::Fn;
+use std::io;
 
-// AST Root
 #[derive(Debug)]
 pub struct Program {
     pub imports: Vec<ImportDecl>,
@@ -124,16 +125,6 @@ pub enum Literal {
     Bool(bool),
 }
 
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Literal::Int(v) => write!(f, "{}", v),
-            Literal::Char(v) => write!(f, "{}", v),
-            Literal::Bool(v) => write!(f, "{}", v),
-        }
-    }
-}
-
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Expr_ {
     Location(Location),
@@ -185,4 +176,83 @@ pub enum BinOp {
 
     And,
     Or,
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Literal::Int(v) => write!(f, "{}", v),
+            Literal::Char(v) => write!(f, "{}", v),
+            Literal::Bool(v) => write!(f, "{}", v),
+        }
+    }
+}
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mod => write!(f, "%"),
+            BinOp::LT => write!(f, "<"),
+            BinOp::GT => write!(f, ">"),
+            BinOp::LE => write!(f, "<="),
+            BinOp::GE => write!(f, ">="),
+            BinOp::EQ => write!(f, "=="),
+            BinOp::NE => write!(f, "!="),
+            BinOp::And => write!(f, "&&"),
+            BinOp::Or => write!(f, "||"),
+        }
+    }
+}
+
+impl fmt::Display for ImportDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "import {};", self.id.id.as_str())
+    }
+}
+
+pub struct ASTPrinter<'buf, T>
+where
+    T: io::Write
+{
+    indent: usize,
+    buf: &'buf mut T,
+    depth: usize,
+}
+
+impl<'buf, T> ASTPrinter<'buf, T>
+where
+    T: io::Write
+{
+    pub fn new(buf: &'buf mut T, indent: usize) -> Self {
+        ASTPrinter {
+            indent,
+            buf,
+            depth: 0,
+        }
+    }
+    pub fn print(&mut self, p: &Program) {
+        for imp in &p.imports {
+            self.indented(|| {
+                self.indented_write(format!("{}", imp).as_str());
+            });
+        }
+    }
+
+    fn indented_write(&mut self, s: &str) -> io::Result<usize> {
+        self.buf.write(" ".repeat(self.depth * self.indent).as_bytes())?;
+        self.buf.write(s.as_bytes())
+    }
+
+    fn indented<F>(&mut self, f: F)
+    where
+        F: Fn(),
+    {
+        self.depth += 1;
+        f();
+        self.depth -= 1;
+    }
 }

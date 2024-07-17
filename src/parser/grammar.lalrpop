@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::parser::ast::*;
+use crate::ast::*;
 use crate::source_pos::{Pos, SrcSpan};
 use crate::parser::lexer;
 use crate::error;
@@ -316,8 +316,8 @@ extern {
         "=" => lexer::Tok::Assign,
         "+=" => lexer::Tok::AssignAdd,
         "-=" => lexer::Tok::AssignSub,
-        "++" => lexer::Tok::Inc1,
-        "--" => lexer::Tok::Dec1,
+        "++" => lexer::Tok::Inc,
+        "--" => lexer::Tok::Dec,
         "<" => lexer::Tok::LT,
         ">" => lexer::Tok::GT,
         "*" => lexer::Tok::Mul,

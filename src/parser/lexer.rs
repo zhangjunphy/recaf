@@ -49,8 +49,8 @@ pub enum Tok {
     AssignAdd,
     AssignSub,
 
-    Inc1,
-    Dec1,
+    Inc,
+    Dec,
 
     QMark,
     Colon,
@@ -69,7 +69,7 @@ pub enum Tok {
 }
 
 pub struct Lexer<'input> {
-    sequence: &'input str,
+    input: &'input str,
     pos: Pos,
     token_map: Vec<(&'input str, Tok)>,
     escape_sequence_map: Vec<(&'input str, char)>,
@@ -82,7 +82,7 @@ type TokenItem = Spanned<Tok, Pos, Error>;
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
         Lexer {
-            sequence: input,
+            input,
             pos: Pos::new(0, 0, 0),
             token_map: Lexer::token_map(),
             escape_sequence_map: Lexer::escape_sequence_map(),
@@ -110,8 +110,8 @@ impl<'input> Lexer<'input> {
             ("+=", Tok::AssignAdd),
             ("-=", Tok::AssignSub),
             ("=", Tok::Assign),
-            ("++", Tok::Inc1),
-            ("--", Tok::Dec1),
+            ("++", Tok::Inc),
+            ("--", Tok::Dec),
             ("+", Tok::Add),
             ("-", Tok::Sub),
             ("*", Tok::Mul),
@@ -187,11 +187,11 @@ impl<'input> Lexer<'input> {
     }
 
     fn to_scan(&self) -> &str {
-        &self.sequence[self.pos.offset..]
+        &self.input[self.pos.offset..]
     }
 
     fn peek_next(&self) -> Option<(char, SrcSpan)> {
-        if self.sequence.len() <= self.pos.offset {
+        if self.input.len() <= self.pos.offset {
             return None;
         }
         let start = self.pos;
@@ -220,7 +220,7 @@ impl<'input> Lexer<'input> {
             res.offset += *next_offset;
         } else {
             // We have reached the EOF.
-            res.offset = self.sequence.len();
+            res.offset = self.input.len();
         }
         Ok(res)
     }
