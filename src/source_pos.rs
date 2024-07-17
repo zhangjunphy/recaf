@@ -36,3 +36,8 @@ impl fmt::Display for SrcSpan {
         write!(f, "[{}-{}]", self.start, self.end)
     }
 }
+
+pub struct Spanned<T> {
+    pub span: SrcSpan,
+    pub elem: T,
+}

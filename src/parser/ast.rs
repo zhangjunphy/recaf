@@ -6,6 +6,7 @@ pub struct Program {
     pub imports: Vec<ImportDecl>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
+    pub range: Option<SrcSpan>,
 }
 
 pub struct ImportDecl {
@@ -33,12 +34,12 @@ pub struct Block {
 }
 
 pub struct Statement {
-    pub statement: StatementBare,
+    pub statement: Statement_,
     pub range: Option<SrcSpan>,
 }
 
 pub struct Expr {
-    pub expr: ExprBare,
+    pub expr: Expr_,
     pub range: Option<SrcSpan>,
 }
 
@@ -81,7 +82,7 @@ pub struct While {
     pub block: Block,
 }
 
-pub enum StatementBare {
+pub enum Statement_ {
     Assign(Assign),
     MethodCall(MethodCall),
     If(If),
@@ -92,6 +93,7 @@ pub enum StatementBare {
     Continue,
 }
 
+#[derive(Debug)]
 pub enum Literal {
     Int(i64),
     Char(char),
@@ -108,7 +110,7 @@ impl fmt::Display for Literal {
     }
 }
 
-pub enum ExprBare {
+pub enum Expr_ {
     Location(Location),
     MethodCall(MethodCall),
     Literal(Literal),
@@ -160,6 +162,6 @@ pub enum BinOp {
 #[macro_export]
 macro_rules! expr {
     ($ii:ident, $s:expr, $e:expr $(, $x:ident )*) => {
-        Expr {expr: ExprBare::$ii ( $( $x ),* ), range: SrcSpan {start: $s, end: $e} }
+        Expr {expr: Expr_ ::$ii ( $( $x ),* ), range: SrcSpan {start: $s, end: $e} }
     }
 }

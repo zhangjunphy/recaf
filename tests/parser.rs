@@ -17,6 +17,17 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_numbers() {
+        let mut lexer: Lexer;
+
+        lexer = Lexer::new("22");
+        assert_eq!(lexer.next().unwrap().unwrap().1, Tok::DecLiteral("22".to_string()));
+
+        lexer = Lexer::new("0x22");
+        assert_eq!(lexer.next().unwrap().unwrap().1, Tok::HexLiteral("0x22".to_string()));
+    }
+
+    #[test]
     fn test_tokenize_escapes() {
         let mut lexer: Lexer;
 
@@ -41,8 +52,10 @@ mod tests {
     #[test]
     fn test_grammar() {
         let sample = "22";
-        assert!(grammar::IntLiteralParser::new()
-                .parse(sample)
-                .is_ok());
+        let lexer = Lexer::new(sample);
+        let res = grammar::IntLiteralParser::new()
+            .parse(lexer);
+        println!("{:#?}", res);
+        assert!(res.is_ok());
     }
 }

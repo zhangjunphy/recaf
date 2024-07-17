@@ -140,10 +140,12 @@ impl<'input> Lexer<'input> {
             return self.match_string();
         } else if to_scan.starts_with('\'') {
             return self.match_char();
-        } else if let Some(token) = self.match_token() {
-            return Some(token);
-        } else if let Some(id) = self.match_id() {
-            return Some(id);
+        } else if let token@Some(_) = self.match_token() {
+            return token;
+        } else if let id@Some(_) = self.match_id() {
+            return id;
+        } else if let num@Some(_) = self.match_num() {
+            return num;
         } else {
             let start = self.pos;
             self.advance(1);
@@ -305,13 +307,30 @@ impl<'input> Lexer<'input> {
         self.advance(nchars);
         res
     }
-    fn match_id(&mut self) -> Option<TokenItem> {
-        let re = Regex::new(r"^[A-Za-z_][0-9A-Za-z_]*").unwrap();
+    fn match_regex(&mut self, re: &Regex) -> Option<(Pos, String, Pos)> {
         let m = re.find(self.to_scan())?;
         let id = m.as_str().to_string();
         let start = self.pos;
         let end = self.advance(id.chars().count());
+        Some((start, id, end))
+    }
+    fn match_id(&mut self) -> Option<TokenItem> {
+        let re = Regex::new(r"^[A-Za-z_][0-9A-Za-z_]*").unwrap();
+        let (start, id, end) = self.match_regex(&re)?;
         Some(Ok((start, Tok::ID(id), end)))
+    }
+    fn match_num(&mut self) -> Option<TokenItem> {
+        let hex_re = Regex::new(r"^0x[0-9A-Fa-f]*").unwrap();
+        if let Some((start, hex, end)) = self.match_regex(&hex_re) {
+            return Some(Ok((start, Tok::HexLiteral(hex), end)));
+        }
+
+        let dec_re = Regex::new(r"^[0-9]*").unwrap();
+        if let Some((start, dec, end)) = self.match_regex(&dec_re) {
+            return Some(Ok((start, Tok::DecLiteral(dec), end)));
+        }
+
+        None
     }
     fn match_char(&mut self) -> Option<TokenItem> {
         let start = self.pos;
