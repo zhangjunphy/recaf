@@ -1,7 +1,7 @@
 use crate::source_pos::SrcSpan;
 use std::fmt;
-use std::ops::Fn;
 use std::io;
+use std::ops::Fn;
 
 #[derive(Debug)]
 pub struct Program {
@@ -208,15 +208,58 @@ impl fmt::Display for BinOp {
     }
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Type::Void => write!(f, "void"),
+            Type::Int => write!(f, "int"),
+            Type::Bool => write!(f, "bool"),
+            Type::Char => write!(f, "char"),
+            Type::Ptr(tpe) => write!(f, "ptr {}", *tpe),
+            Type::Array(tpe, size) => write!(f, "{}x{}", size, *tpe),
+        }
+    }
+}
+
 impl fmt::Display for ImportDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "import {};", self.id.id.as_str())
     }
 }
 
+impl fmt::Display for FieldDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {};", self.tpe, self.id.id.as_str())
+    }
+}
+
+impl fmt::Display for ID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Scalar(id) => write!(f, "{}", id),
+            Self::Vector(id, expr) => write!(f, "{}[{}]", id, *expr)
+        }
+    }
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Scalar(id) => write!(f, "{}", id),
+            Self::Vector(id, expr) => write!(f, "{}[{}]", id, *expr)
+        }
+    }
+}
+
 pub struct ASTPrinter<'buf, T>
 where
-    T: io::Write
+    T: io::Write,
 {
     indent: usize,
     buf: &'buf mut T,
@@ -225,7 +268,7 @@ where
 
 impl<'buf, T> ASTPrinter<'buf, T>
 where
-    T: io::Write
+    T: io::Write,
 {
     pub fn new(buf: &'buf mut T, indent: usize) -> Self {
         ASTPrinter {
@@ -234,25 +277,63 @@ where
             depth: 0,
         }
     }
-    pub fn print(&mut self, p: &Program) {
+    pub fn print(&mut self, p: &Program) -> io::Result<usize> {
+        let mut size = 0;
         for imp in &p.imports {
-            self.indented(|| {
-                self.indented_write(format!("{}", imp).as_str());
-            });
+            size += self.indented_write(format!("{}", imp).as_str())?;
+        }
+        for fld in &p.fields {
+            size += self.indented_write(format!("{}", fld).as_str())?;
+        }
+        for method in &p.methods {
+            size += self.print_method(method)?;
+        }
+        Ok(size)
+    }
+    fn print_method(&mut self, m: &MethodDecl) -> io::Result<usize> {
+        let mut size = 0;
+        let args_str: Vec<String> = m
+            .arguments
+            .clone()
+            .into_iter()
+            .map(|arg| format!("{}", arg))
+            .collect();
+        size += self.indented_write(
+            format!("{} {} ({}) {{", m.tpe, m.id.id, args_str.join(", ")).as_str(),
+        )?;
+        Ok(size)
+    }
+    fn print_block(&mut self, b: &Block) -> io::Result<usize> {
+        self.indent();
+        let mut size = 0;
+        for fld in &b.fields {
+            size += self.indented_write(format!("{}", fld).as_str())?;
+        }
+        for stmt in &b.statements {
+            size += self.print_stmt(stmt)?;
+        }
+        self.unindent();
+        Ok(size)
+    }
+    fn print_stmt(&mut self, s: &Statement) -> io::Result<usize> {
+        match s.statement {
+            Statement_::Assign(_) => _,
         }
     }
-
     fn indented_write(&mut self, s: &str) -> io::Result<usize> {
-        self.buf.write(" ".repeat(self.depth * self.indent).as_bytes())?;
-        self.buf.write(s.as_bytes())
+        let mut size = 0;
+        size += self
+            .buf
+            .write(" ".repeat(self.depth * self.indent).as_bytes())?;
+        size += self.buf.write(s.as_bytes())?;
+        size += self.buf.write("\n".as_bytes())?;
+        Ok(size)
     }
 
-    fn indented<F>(&mut self, f: F)
-    where
-        F: Fn(),
-    {
+    fn indent(&mut self) {
         self.depth += 1;
-        f();
-        self.depth -= 1;
+    }
+    fn unindent(&mut self) {
+        self.depth -= 1
     }
 }
