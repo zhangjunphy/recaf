@@ -154,19 +154,89 @@ pub Expr: Expr = {
     }
 }
 
-pub AssignExpr: AssignExpr = {
-    "=" <e: Expr> => AssignExpr::Assign(e),
-    "+=" <e: Expr> => AssignExpr::AssignAdd(e),
-    "-=" <e: Expr> => AssignExpr::AssignSub(e),
-    "++" => AssignExpr::Inc,
-    "--" => AssignExpr::Dec,
-}
-
-pub SingleLineStmt: Statement = {
-    <start:@L> <loc: Location> <e: AssignExpr> ";" <end:@R> => Statement {
+pub AssignStmt: Statement = {
+    <start:@L> <loc: Location> "=" <e: Expr> ";" <end:@R> => Statement {
         statement: Statement_::Assign(Assign{location: loc, expr: e}),
         span: Some(SrcSpan::new(start, end)),
     },
+    <start:@L> <loc: Location> <lend:@R> "+=" <e: Expr> ";" <end:@R> => Statement {
+        statement: Statement_::Assign(Assign{
+            location: loc.clone(),
+            expr: Expr{
+                expr: Expr_::BinOp(
+                    Box::new(Expr{
+                        expr: Expr_::Location(loc),
+                        span: Some(SrcSpan::new(start, lend)),
+                    }),
+                    BinOp::Add,
+                    Box::new(e.clone()),
+                ),
+                span: e.span,
+            }
+        }),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <loc: Location> <lend:@R> "-=" <e: Expr> ";" <end:@R> => Statement {
+        statement: Statement_::Assign(Assign{
+            location: loc.clone(),
+            expr: Expr{
+                expr: Expr_::BinOp(
+                    Box::new(Expr{
+                        expr: Expr_::Location(loc),
+                        span: Some(SrcSpan::new(start, lend)),
+                    }),
+                    BinOp::Sub,
+                    Box::new(e.clone()),
+                ),
+                span: e.span,
+            }
+        }),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <loc: Location> <lend:@R> "++" ";" <end:@R> => Statement {
+        statement: Statement_::Assign(Assign{
+            location: loc.clone(),
+            expr: Expr{
+                expr: Expr_::BinOp(
+                    Box::new(Expr{
+                        expr: Expr_::Location(loc),
+                        span: Some(SrcSpan::new(start, lend))
+                    }),
+                    BinOp::Add,
+                    Box::new(Expr{
+                        expr: Expr_::Literal(Literal::Int(1)),
+                        span: Some(SrcSpan::new(start, end))
+                    }),
+                ),
+                span: Some(SrcSpan::new(start, end)),
+            }
+        }),
+        span: Some(SrcSpan::new(start, end)),
+    },
+    <start:@L> <loc: Location> <lend:@R> "--" ";" <end:@R> => Statement {
+        statement: Statement_::Assign(Assign{
+            location: loc.clone(),
+            expr: Expr{
+                expr: Expr_::BinOp(
+                    Box::new(Expr{
+                        expr: Expr_::Location(loc),
+                        span: Some(SrcSpan::new(start, lend))
+                    }),
+                    BinOp::Sub,
+                    Box::new(Expr{
+                        expr: Expr_::Literal(Literal::Int(1)),
+                        span: Some(SrcSpan::new(start, end))
+                    })
+                ),
+                span: Some(SrcSpan::new(start, end)),
+            }
+        }),
+        span: Some(SrcSpan::new(start, end)),
+    },
+}
+
+pub SingleLineStmt: Statement = {
+    <AssignStmt> => <>,
     <start:@L> <c: MethodCall> ";" <end:@R> => Statement {
         statement: Statement_::MethodCall(c),
         span: Some(SrcSpan::new(start, end)),

@@ -1,3 +1,4 @@
+use super::util;
 use crate::error::Error;
 use crate::source_pos::{Pos, SrcSpan};
 use regex::Regex;
@@ -85,7 +86,7 @@ impl<'input> Lexer<'input> {
             input,
             pos: Pos::new(0, 0, 0),
             token_map: Lexer::token_map(),
-            escape_sequence_map: Lexer::escape_sequence_map(),
+            escape_sequence_map: util::escape_sequence_map(),
             whitespace: BTreeSet::from_iter(Lexer::whitespace_chars()),
         }
     }
@@ -141,16 +142,6 @@ impl<'input> Lexer<'input> {
         res.sort_by(|a, b| a.0.cmp(b.0).reverse());
 
         res
-    }
-
-    fn escape_sequence_map() -> Vec<(&'input str, char)> {
-        vec![
-            (r#"\\n"#, '\n'),
-            (r#"\\\\"#, '\\'),
-            (r#"\\t"#, '\t'),
-            (r#"\\'"#, '\''),
-            (r#"\\\""#, '"'),
-        ]
     }
 
     fn whitespace_chars() -> Vec<char> {

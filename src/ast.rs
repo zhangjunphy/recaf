@@ -1,7 +1,7 @@
+use crate::parser::util;
 use crate::source_pos::SrcSpan;
 use std::fmt;
 use std::io;
-use std::ops::Fn;
 
 #[derive(Debug)]
 pub struct Program {
@@ -61,16 +61,7 @@ pub struct ID {
 #[derive(Debug, Clone)]
 pub struct Assign {
     pub location: Location,
-    pub expr: AssignExpr,
-}
-
-#[derive(Debug, Clone)]
-pub enum AssignExpr {
-    Assign(Expr),
-    AssignAdd(Expr),
-    AssignSub(Expr),
-    Inc,
-    Dec,
+    pub expr: Expr,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +173,7 @@ impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Literal::Int(v) => write!(f, "{}", v),
-            Literal::Char(v) => write!(f, "{}", v),
+            Literal::Char(v) => write!(f, "\'{}\'", v),
             Literal::Bool(v) => write!(f, "{}", v),
         }
     }
@@ -243,16 +234,43 @@ impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Scalar(id) => write!(f, "{}", id),
-            Self::Vector(id, expr) => write!(f, "{}[{}]", id, *expr)
+            Self::Vector(id, expr) => write!(f, "{}[{}]", id, *expr),
         }
+    }
+}
+
+impl fmt::Display for Argument {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Argument::Expr(e) => write!(f, "{}", e),
+            Argument::StringLiteral(s) => write!(f, "\"{}\"", util::escape_string_literal(s)),
+        }
+    }
+}
+
+impl fmt::Display for MethodCall {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let args_str: Vec<String> = self
+            .arguments
+            .clone()
+            .into_iter()
+            .map(|arg| format!("{}", arg))
+            .collect();
+        write!(f, "{}({})", self.name, args_str.join(", "))
     }
 }
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Scalar(id) => write!(f, "{}", id),
-            Self::Vector(id, expr) => write!(f, "{}[{}]", id, *expr)
+        match &self.expr {
+            Expr_::Location(l) => write!(f, "{}", l),
+            Expr_::MethodCall(c) => write!(f, "{}", c),
+            Expr_::Literal(l) => write!(f, "{}", l),
+            Expr_::Len(id) => write!(f, "len({})", id),
+            Expr_::BinOp(l, op, r) => write!(f, "{} {} {}", *l, op, *r),
+            Expr_::NNeg(e) => write!(f, "-{}", *e),
+            Expr_::LNeg(e) => write!(f, "!{}", *e),
+            Expr_::TernaryOp(p, e1, e2) => write!(f, "{} ? {} : {}", *p, *e1, *e2),
         }
     }
 }
@@ -301,6 +319,8 @@ where
         size += self.indented_write(
             format!("{} {} ({}) {{", m.tpe, m.id.id, args_str.join(", ")).as_str(),
         )?;
+        size += self.print_block(&m.block)?;
+        size += self.indented_write("}")?;
         Ok(size)
     }
     fn print_block(&mut self, b: &Block) -> io::Result<usize> {
@@ -315,10 +335,58 @@ where
         self.unindent();
         Ok(size)
     }
-    fn print_stmt(&mut self, s: &Statement) -> io::Result<usize> {
-        match s.statement {
-            Statement_::Assign(_) => _,
+    fn format_single_line_stmt(s: &Statement) -> String {
+        match &s.statement {
+            Statement_::Assign(l) => format!("{} = {}", l.location, l.expr),
+            Statement_::MethodCall(c) => format!("{c}"),
+            _ => panic!("Not single line statement!"),
         }
+    }
+    fn print_stmt(&mut self, s: &Statement) -> io::Result<usize> {
+        let mut size = 0;
+        match &s.statement {
+            Statement_::Assign(l) => {
+                size += self.indented_write(format!("{} = {};", l.location, l.expr).as_str())?
+            }
+            Statement_::MethodCall(c) => size += self.indented_write(format!("{c};").as_str())?,
+            Statement_::If(i) => {
+                size += self.indented_write(format!("if ({}) {{", i.pred).as_str())?;
+                size += self.print_block(&i.if_block)?;
+                match &i.else_block {
+                    None => size += self.indented_write("}")?,
+                    Some(b) => {
+                        size += self.indented_write("} else {")?;
+                        size += self.print_block(&b)?;
+                    }
+                };
+                size += self.indented_write("}")?;
+            }
+            Statement_::For(f) => {
+                size += self.indented_write(
+                    format!(
+                        "for ({}; {}; {}) {{",
+                        Self::format_single_line_stmt(&f.init),
+                        f.pred,
+                        Self::format_single_line_stmt(&f.update),
+                    )
+                    .as_str(),
+                )?;
+                size += self.print_block(&f.block)?;
+                size += self.indented_write("}")?;
+            }
+            Statement_::While(w) => {
+                size += self.indented_write(format!("while ({}) {{", w.pred).as_str())?;
+                size += self.print_block(&w.block)?;
+                size += self.indented_write("}")?;
+            }
+            Statement_::Return(e) => match e {
+                None => size += self.indented_write("return;")?,
+                Some(e) => size += self.indented_write(format!("return {};", e).as_str())?,
+            },
+            Statement_::Break => size += self.indented_write("break")?,
+            Statement_::Continue => size += self.indented_write("continue")?,
+        }
+        Ok(size)
     }
     fn indented_write(&mut self, s: &str) -> io::Result<usize> {
         let mut size = 0;

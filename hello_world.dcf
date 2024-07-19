@@ -1,5 +1,13 @@
 import printf;
 
 void main() {
-    printf("hello world");
+    int a, b, c;
+    printf("hello \nworld");
+    a = b + c;
+    if (a > 0) {
+      b = a;
+      a++;
+    } else {
+      c = b;
+    }
 }
