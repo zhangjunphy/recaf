@@ -36,13 +36,13 @@ mod tests {
     fn test_tokenize_escapes() {
         let mut lexer: Lexer;
 
-        lexer = Lexer::new(r#""\\n""#);
+        lexer = Lexer::new(r#""\n""#);
         assert_eq!(
             lexer.next().unwrap().unwrap().1,
             Tok::String("\n".to_string())
         );
 
-        lexer = Lexer::new(r#""\\\\""#);
+        lexer = Lexer::new(r#""\\""#);
         assert_eq!(
             lexer.next().unwrap().unwrap().1,
             Tok::String("\\".to_string())
