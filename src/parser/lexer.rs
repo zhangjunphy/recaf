@@ -1,6 +1,7 @@
-use super::util;
 use crate::error::Error;
+use crate::parser::util;
 use crate::source_pos::{Pos, SrcSpan};
+use crate::{err_pos};
 use regex::Regex;
 use std::collections::BTreeSet;
 
@@ -72,8 +73,8 @@ pub enum Tok {
 pub struct Lexer<'input> {
     input: &'input str,
     pos: Pos,
-    token_map: Vec<(&'input str, Tok)>,
-    escape_sequence_map: Vec<(&'input str, char)>,
+    token_map: Vec<(&'static str, Tok)>,
+    escape_sequence_map: Vec<(&'static str, char)>,
     whitespace: BTreeSet<char>,
 }
 
@@ -91,7 +92,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    fn token_map() -> Vec<(&'input str, Tok)> {
+    fn token_map() -> Vec<(&'static str, Tok)> {
         let mut res = vec![
             ("import", Tok::Import),
             ("if", Tok::If),
@@ -169,11 +170,11 @@ impl<'input> Lexer<'input> {
         } else {
             let start = self.pos;
             self.advance(1);
-            return Some(Err(Error::new_span(
+            return Some(err_pos!(
                 start,
                 self.pos,
-                format!("Unable to handle character: '{next_char}'"),
-            )));
+                "Unable to handle character: '{next_char}'",
+            ));
         }
     }
 
@@ -368,28 +369,20 @@ impl<'input> Lexer<'input> {
             res = ec;
         } else if self.to_scan().starts_with('\\') {
             let end = self.forward_pos(1);
-            return Some(Err(Error::new_span(
-                start,
-                end.unwrap(),
-                "Invalid escape sequence.",
-            )));
+            return Some(err_pos!(start, end.unwrap(), "Invalid escape sequence.",));
         } else if let Some((c, _)) = self.peek_next() {
             res = c;
             self.advance(1);
         } else {
-            return Some(Err(Error::new_span(
+            return Some(err_pos!(
                 start,
                 self.pos,
                 "Char literal reaches end of file.",
-            )));
+            ));
         }
         let rquote = self.peek_next();
         if rquote.is_none() || rquote.unwrap().0 != '\'' {
-            return Some(Err(Error::new_span(
-                start,
-                self.pos,
-                "Char literal not enclosed.",
-            )));
+            return Some(err_pos!(start, self.pos, "Char literal not enclosed.",));
         }
         self.advance(1);
         Some(Ok((start, Tok::Char(res), self.pos)))
@@ -410,20 +403,16 @@ impl<'input> Lexer<'input> {
                 res.push(c);
             } else if self.to_scan().starts_with('\\') {
                 let end = self.forward_pos(1).unwrap();
-                return Some(Err(Error::new_span(
-                    self.pos,
-                    end,
-                    "Invalid escape sequence.",
-                )));
+                return Some(err_pos!(self.pos, end, "Invalid escape sequence.",));
             } else if let Some(c) = self.to_scan().chars().next() {
                 self.advance(1);
                 res.push(c);
             } else {
-                return Some(Err(Error::new_span(
+                return Some(err_pos!(
                     start,
                     self.pos,
                     "String literal reaches end of file.",
-                )));
+                ));
             }
         }
         Some(Ok((start, Tok::String(res), self.pos)))

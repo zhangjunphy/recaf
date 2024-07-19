@@ -1,10 +1,12 @@
 use recaf::ast::*;
 use recaf::parser::grammar;
 use recaf::parser::lexer::Lexer;
+use recaf::parser::ParserState;
 
-fn parse_expr (s: &str) -> Expr {
+fn parse_expr(s: &str) -> Expr {
     let lexer = Lexer::new(s);
-    let res = grammar::ExprParser::new().parse(lexer);
+    let state = ParserState::new();
+    let res = grammar::ExprParser::new().parse(&state, lexer);
     res.unwrap()
 }
 
@@ -18,7 +20,8 @@ mod tests {
 
         for (sample, expected) in samples {
             let lexer = Lexer::new(sample);
-            let res = grammar::LiteralParser::new().parse(lexer);
+            let state = ParserState::new();
+            let res = grammar::LiteralParser::new().parse(&state, lexer);
             assert!(res.is_ok() && res.unwrap() == Literal::Int(expected));
         }
     }
@@ -80,7 +83,7 @@ mod tests {
                     Expr_::TernaryOp(_, _, _) => (),
                     _ => panic!(),
                 };
-            },
+            }
             _ => panic!(),
         }
     }

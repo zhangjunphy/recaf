@@ -21,10 +21,11 @@ pub struct ImportDecl {
 pub struct FieldDecl {
     pub id: ID,
     pub tpe: Type,
+    pub block_id: usize,
     pub span: Option<SrcSpan>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MethodDecl {
     pub id: ID,
     pub tpe: Type,
@@ -35,6 +36,7 @@ pub struct MethodDecl {
 
 #[derive(Debug, Clone)]
 pub struct Block {
+    pub id: usize,
     pub fields: Vec<FieldDecl>,
     pub statements: Vec<Statement>,
     pub span: Option<SrcSpan>,

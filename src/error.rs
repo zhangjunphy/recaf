@@ -1,23 +1,45 @@
-use crate::source_pos::{Pos, SrcSpan};
+use crate::source_pos::SrcSpan;
 use std::fmt;
+
+#[macro_export]
+macro_rules! err_pos {
+    ($start:expr, $end:expr, $($arg:tt)*) => {{
+        let res = Err(Error::new(Some(SrcSpan::new($start, $end)), format!($($arg)*)));
+        res
+    }}
+}
+#[macro_export]
+macro_rules! err_span {
+    ($e:expr, $($arg:tt)*) => {{
+        let res = Err(Error::new($e, format!($($arg)*)));
+        res
+    }}
+}
+#[macro_export]
+macro_rules! err {
+    ($($arg:tt)*) => {{
+        let res = Err(Error::new(None, format!($($arg)*)));
+        res
+    }}
+}
 
 #[derive(Debug, Clone)]
 pub struct Error {
-    pub range: Option<SrcSpan>,
+    pub span: Option<SrcSpan>,
     pub msg: String,
 }
 
 impl Error {
-    pub fn new_span<S: Into<String>>(start: Pos, end: Pos, msg: S) -> Error {
+    pub fn new<S: Into<String>>(span: Option<SrcSpan>, msg: S) -> Error {
         Error {
-            range: Some(SrcSpan::new(start, end)),
+            span,
             msg: msg.into(),
         }
     }
 
-    pub fn new<S: Into<String>>(msg: S) -> Error {
+    pub fn msg<S: Into<String>>(msg: S) -> Error {
         Error {
-            range: None,
+            span: None,
             msg: msg.into(),
         }
     }
@@ -25,10 +47,9 @@ impl Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.range {
+        match &self.span {
             None => write!(f, "error: {}", self.msg),
-            Some(range) => write!(f, "error {}: {}", range, self.msg)
+            Some(range) => write!(f, "error {}: {}", range, self.msg),
         }
-        
     }
 }

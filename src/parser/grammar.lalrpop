@@ -3,8 +3,9 @@ use crate::ast::*;
 use crate::source_pos::{Pos, SrcSpan};
 use crate::parser::lexer;
 use crate::error;
+use crate::parser::ParserState;
 
-grammar;
+grammar(state: &ParserState);
 
 pub ID: ID = <start:@L> <id:"id"> <end:@R> =>
     ID{ id: id, span: Some(SrcSpan::new(start, end)) };
@@ -304,25 +305,25 @@ pub FieldDeclList: Vec<FieldDecl> = {
     <t: Type> <fields: Comma<Field>> ";" =>
         fields.into_iter().map(|(id, size, span)| {
             match size {
-                None => FieldDecl{id: id, tpe: t.clone(), span: Some(span)},
+                None => FieldDecl{id: id, tpe: t.clone(), block_id: 0, span: Some(span)},
                 Some(size) =>
-                    FieldDecl{id: id, tpe: Type::Array(Box::new(t.clone()), size), span: Some(span)}
+                    FieldDecl{id: id, tpe: Type::Array(Box::new(t.clone()), size), block_id:0, span: Some(span)}
             }
         }).collect(),
 }
 
 pub Block : Block = {
     <start:@L> "{" <fields: FieldDeclList*> <stmts: Statement*>  "}" <end:@R> =>
-        Block {
-            fields: fields.into_iter().flatten().collect(),
-            statements: stmts,
-            span: Some(SrcSpan::new(start, end))
-        },
+        state.block(
+            fields.into_iter().flatten().collect(),
+            stmts,
+            SrcSpan::new(start, end)
+        ),
 }
 
 pub MethodArg: FieldDecl = {
     <start:@L> <t: Type> <id: ID> <end:@R> => FieldDecl {
-        id: id, tpe: t, span: Some(SrcSpan::new(start, end)),
+        id: id, tpe: t, block_id: 0, span: Some(SrcSpan::new(start, end)),
     },
 }
 

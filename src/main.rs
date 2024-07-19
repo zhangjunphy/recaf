@@ -1,8 +1,9 @@
 use clap::Parser;
-use recaf::cli::{Args, Stage};
-use recaf::parser::lexer::Lexer;
-use recaf::parser::grammar::ProgramParser;
 use recaf::ast::ASTPrinter;
+use recaf::cli::{Args, Stage};
+use recaf::parser::grammar::ProgramParser;
+use recaf::parser::lexer::Lexer;
+use recaf::parser::ParserState;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -38,7 +39,6 @@ fn lex(file: &String) {
     }
 }
 
-
 fn parse(file: &String) {
     let mut content = String::new();
     let mut f = match File::open(file) {
@@ -49,14 +49,15 @@ fn parse(file: &String) {
         panic!("Error reading {}: {}", file, msg);
     }
 
-    let ast = ProgramParser::new().parse(Lexer::new(&content));
+    let state = ParserState::new();
+    let ast = ProgramParser::new().parse(&state, Lexer::new(&content));
     let stdout = &mut std::io::stdout();
     let mut printer = ASTPrinter::new(stdout, 2);
 
     match ast {
         Ok(program) => {
             printer.print(&program).expect("Unable to print ast.");
-        },
+        }
         Err(err) => eprintln!("{:?}", err),
     }
 }
