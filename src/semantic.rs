@@ -22,7 +22,7 @@ impl<'p> SymbolTable<'p> {
 }
 
 #[derive(Clone)]
-struct ProgramTables<'p> {
+pub struct ProgramTables<'p> {
     imports: HashSet<String>,
     methods: HashMap<String, &'p MethodDecl>,
     variables: HashMap<usize, SymbolTable<'p>>,
@@ -37,19 +37,21 @@ impl<'p> ProgramTables<'p> {
         }
     }
 
-    fn add_table(
-        &mut self,
-        block_id: usize,
-        parent_id: Option<usize>,
-        block: &Block,
-    ) -> Result<(), Error> {
+    fn add_table(&mut self, block_id: usize, parent_id: Option<usize>) -> Result<(), Error> {
         let old = self
             .variables
             .insert(block_id, SymbolTable::new(block_id, parent_id));
         if old.is_some() {
-            return err_span!(block.span, "Symbol table present for block {block_id}",);
+            return err!("Symbol table present for block {block_id}",);
         }
         Ok(())
+    }
+
+    fn add_table_if_nonexist(&mut self, block_id: usize, parent_id: Option<usize>) {
+        if !self.variables.contains_key(&block_id) {
+            self.variables
+                .insert(block_id, SymbolTable::new(block_id, parent_id));
+        }
     }
 
     fn find_parent(&self, block: usize) -> Option<&SymbolTable> {
@@ -66,6 +68,15 @@ impl<'p> ProgramTables<'p> {
         let is_new = self.imports.insert(imp.id.id.clone());
         if !is_new {
             err_span!(imp.span, "Imported method {} is a duplicate.", imp.id.id)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn add_method(&mut self, m: &'p MethodDecl) -> Result<(), Error> {
+        let is_new = self.methods.insert(m.id.id.clone(), m);
+        if is_new.is_some() {
+            err_span!(m.span, "Duplicate method declaration for {}.", m.id.id)
         } else {
             Ok(())
         }
@@ -97,7 +108,7 @@ impl<'p> ProgramTables<'p> {
     }
 }
 
-struct SemanticChecker<'p> {
+pub struct SemanticChecker<'p> {
     program: &'p Program,
     tables: ProgramTables<'p>,
 }
@@ -111,7 +122,7 @@ impl<'p> SemanticChecker<'p> {
     }
 
     pub fn process(&'p mut self) -> Result<(), Error> {
-        self.process_root()
+        self.process_program()
     }
 
     pub fn get_symbol_table(&'p self) -> &ProgramTables {
@@ -129,11 +140,7 @@ impl<'p> SemanticChecker<'p> {
         Ok(())
     }
 
-    fn process_root_decls(&'p mut self) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn process_root(&'p mut self) -> Result<(), Error> {
+    fn process_program(&'p mut self) -> Result<(), Error> {
         self.add_root()?;
         for imp in &self.program.imports {
             self.tables.add_import(imp)?;
@@ -142,19 +149,48 @@ impl<'p> SemanticChecker<'p> {
             self.tables.add_variable(consts::ROOT_BLOCK_ID, var)?;
         }
         for method in &self.program.methods {
-            self.tables.add_table(
-                method.block.id,
-                Some(consts::ROOT_BLOCK_ID),
-                &method.block,
-            )?;
+            self.tables.add_method(method)?;
             self.process_method(method)?;
         }
         Ok(())
     }
 
-    fn process_method(&mut self, m: &MethodDecl) -> Result<(), Error> {
+    fn process_method(&mut self, m: &'p MethodDecl) -> Result<(), Error> {
+        let method_block = m.block.id;
+        self.tables
+            .add_table(m.block.id, Some(consts::ROOT_BLOCK_ID))?;
+        for v in &m.arguments {
+            self.tables.add_variable(method_block, v)?;
+        }
+        self.process_block(&m.block, Some(consts::ROOT_BLOCK_ID))?;
         Ok(())
     }
 
-    fn build_symbol_table(&mut self, p: &Program) {}
+    fn process_block(&mut self, b: &'p Block, parent: Option<usize>) -> Result<(), Error> {
+        self.tables.add_table_if_nonexist(b.id, parent);
+        for v in &b.fields {
+            self.tables.add_variable(b.id, v)?;
+        }
+        for s in &b.statements {
+            self.process_stmt(s, b.id)?;
+        }
+        Ok(())
+    }
+
+    fn process_stmt(&mut self, s: &'p Statement, block_id: usize) -> Result<(), Error> {
+        let s_ = &s.statement;
+        match s_ {
+            Statement_::If(i) => {
+                self.process_block(&i.if_block, Some(block_id))?;
+                if let Some(else_block) = &i.else_block {
+                    self.process_block(else_block, Some(block_id))?;
+                }
+            },
+            Statement_::While(w) => {
+                self.process_block(&w.block, Some(block_id))?;
+            },
+            _ => (),
+        }
+        Ok(())
+    }
 }

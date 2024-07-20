@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::parser::util;
 use crate::source_pos::{Pos, SrcSpan};
-use crate::{err_pos};
+use crate::err_pos;
 use regex::Regex;
 use std::collections::BTreeSet;
 
