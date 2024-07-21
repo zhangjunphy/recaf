@@ -5,10 +5,10 @@ use crate::{err, err_span};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
-struct SymbolTable<'p> {
-    block_id: usize, // Block this table belongs to.
-    parent_id: Option<usize>,
-    variables: HashMap<String, &'p FieldDecl>,
+pub struct SymbolTable<'p> {
+    pub block_id: usize, // Block this table belongs to.
+    pub parent_id: Option<usize>,
+    pub variables: HashMap<String, &'p FieldDecl>,
 }
 
 impl<'p> SymbolTable<'p> {
@@ -23,9 +23,9 @@ impl<'p> SymbolTable<'p> {
 
 #[derive(Clone)]
 pub struct ProgramTables<'p> {
-    imports: HashSet<String>,
-    methods: HashMap<String, &'p MethodDecl>,
-    variables: HashMap<usize, SymbolTable<'p>>,
+    pub imports: HashSet<String>,
+    pub methods: HashMap<String, &'p MethodDecl>,
+    pub variables: HashMap<usize, SymbolTable<'p>>,
 }
 
 impl<'p> ProgramTables<'p> {
@@ -54,12 +54,12 @@ impl<'p> ProgramTables<'p> {
         }
     }
 
-    fn find_parent(&self, block: usize) -> Option<&SymbolTable> {
+    pub fn find_parent(&self, block: usize) -> Option<&SymbolTable> {
         let parent = self.variables.get(&block).and_then(|t| t.parent_id)?;
         self.variables.get(&parent)
     }
 
-    fn find_mut_parent(&mut self, block: usize) -> Option<&'p mut SymbolTable> {
+    pub fn find_mut_parent(&mut self, block: usize) -> Option<&'p mut SymbolTable> {
         let parent = self.variables.get(&block).and_then(|t| t.parent_id)?;
         self.variables.get_mut(&parent)
     }
