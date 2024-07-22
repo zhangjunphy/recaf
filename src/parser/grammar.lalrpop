@@ -22,6 +22,8 @@ pub Literal: Literal = {
     "false" => Literal::Bool(false),
 
     "char" => Literal::Char(<>),
+
+    "string" => Literal::String(<>),
 };
 
 Comma<T>: Vec<T> = {
@@ -31,11 +33,6 @@ Comma<T>: Vec<T> = {
     }
 }
 
-pub Argument: Argument = {
-    "string" => Argument::StringLiteral(<>),
-    <Expr> => Argument::Expr(<>),
-}
-
 pub Location: Location = {
     <id: ID> => Location::Scalar(id),
     <id: ID> "[" <offset: Expr> "]" => Location::Vector(id, Box::new(offset)),
@@ -43,25 +40,29 @@ pub Location: Location = {
 
 pub MethodCall: MethodCall = {
     <id: ID> "(" ")" => MethodCall{name: id, arguments: Vec::new()},
-    <id: ID> "(" <args: Comma<Argument>> ")" => MethodCall{name: id, arguments: args},
+    <id: ID> "(" <args: Comma<Expr>> ")" => MethodCall{name: id, arguments: args},
 }
 
 pub Expr: Expr = {
     #[precedence(level="0")]
     <start:@L> <loc: Location> <end:@R> => Expr {
         expr: Expr_::Location(loc),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <c: MethodCall> <end:@R> => Expr {
         expr: Expr_::MethodCall(c),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <lit: Literal> <end:@R> => Expr {
         expr: Expr_::Literal(lit),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "len" "(" <id: ID> ")" <end:@R> => Expr {
         expr: Expr_::Len(id),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -69,11 +70,13 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> "-" <e:Expr> <end:@R> => Expr {
         expr: Expr_::NNeg(Box::new(e)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
     <start:@L> "!" <e:Expr> <end:@R> => Expr {
         expr: Expr_::LNeg(Box::new(e)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -81,14 +84,17 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "*" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::Mul, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "/" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::Div, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "%" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::Mod, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -96,10 +102,12 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "+" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::Add, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "-" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::Sub, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -107,18 +115,22 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "<" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::LT, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "<=" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::LE, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> ">" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::GT, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> ">=" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::GE, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -126,10 +138,12 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "==" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::EQ, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "!=" <r:Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::NE, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -137,6 +151,7 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l: Expr> "&&" <r: Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::And, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -144,6 +159,7 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l: Expr> "||" <r: Expr> <end:@R> => Expr {
         expr: Expr_::BinOp(Box::new(l), BinOp::Or, Box::new(r)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -151,6 +167,7 @@ pub Expr: Expr = {
     #[assoc(side="right")]
     <start:@L> <pred: Expr> "?" <t: Expr> ":" <f: Expr> <end:@R> => Expr {
         expr: Expr_::TernaryOp(Box::new(pred), Box::new(t), Box::new(f)),
+        tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     }
 }
@@ -167,11 +184,13 @@ pub AssignStmt: Statement = {
                 expr: Expr_::BinOp(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
+                        tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend)),
                     }),
                     BinOp::Add,
                     Box::new(e.clone()),
                 ),
+                tpe: Type::Void,
                 span: e.span,
             }
         }),
@@ -184,11 +203,13 @@ pub AssignStmt: Statement = {
                 expr: Expr_::BinOp(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
+                        tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend)),
                     }),
                     BinOp::Sub,
                     Box::new(e.clone()),
                 ),
+                tpe: Type::Void,
                 span: e.span,
             }
         }),
@@ -201,14 +222,17 @@ pub AssignStmt: Statement = {
                 expr: Expr_::BinOp(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
+                        tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend))
                     }),
                     BinOp::Add,
                     Box::new(Expr{
                         expr: Expr_::Literal(Literal::Int(1)),
+                        tpe: Type::Void,
                         span: Some(SrcSpan::new(start, end))
                     }),
                 ),
+                tpe: Type::Void,
                 span: Some(SrcSpan::new(start, end)),
             }
         }),
@@ -221,14 +245,17 @@ pub AssignStmt: Statement = {
                 expr: Expr_::BinOp(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
+                        tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend))
                     }),
                     BinOp::Sub,
                     Box::new(Expr{
                         expr: Expr_::Literal(Literal::Int(1)),
+                        tpe: Type::Void,
                         span: Some(SrcSpan::new(start, end))
                     })
                 ),
+                tpe: Type::Void,
                 span: Some(SrcSpan::new(start, end)),
             }
         }),

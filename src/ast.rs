@@ -51,6 +51,7 @@ pub struct Statement {
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Expr {
     pub expr: Expr_,
+    pub tpe: Type,
     pub span: Option<SrcSpan>,
 }
 
@@ -74,15 +75,9 @@ pub struct If {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub enum Argument {
-    Expr(Expr),
-    StringLiteral(String),
-}
-
-#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct MethodCall {
     pub name: ID,
-    pub arguments: Vec<Argument>,
+    pub arguments: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +111,7 @@ pub enum Literal {
     Int(i64),
     Char(char),
     Bool(bool),
+    String(String),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -144,6 +140,10 @@ pub enum Type {
     Char,
     Ptr(Box<Type>),
     Array(Box<Type>, usize),
+}
+
+pub fn str_type(s: &String) -> Type {
+    Type::Array(Box::new(Type::Char), s.len())
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -177,6 +177,7 @@ impl fmt::Display for Literal {
             Literal::Int(v) => write!(f, "{}", v),
             Literal::Char(v) => write!(f, "\'{}\'", v),
             Literal::Bool(v) => write!(f, "{}", v),
+            Literal::String(v) => write!(f, "\"{}\"", v),
         }
     }
 }
@@ -237,15 +238,6 @@ impl fmt::Display for Location {
         match self {
             Self::Scalar(id) => write!(f, "{}", id),
             Self::Vector(id, expr) => write!(f, "{}[{}]", id, *expr),
-        }
-    }
-}
-
-impl fmt::Display for Argument {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Argument::Expr(e) => write!(f, "{}", e),
-            Argument::StringLiteral(s) => write!(f, "\"{}\"", util::escape_string_literal(s)),
         }
     }
 }

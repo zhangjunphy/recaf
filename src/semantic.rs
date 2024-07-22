@@ -1,7 +1,9 @@
 use crate::ast::*;
 use crate::consts;
 use crate::error::Error;
+use crate::source_pos::SrcSpan;
 use crate::{err, err_span};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
@@ -19,6 +21,11 @@ impl<'p> VariableTable<'p> {
             variables: HashMap::new(),
         }
     }
+}
+
+pub enum MethodOrImport<'p> {
+    Method(&'p MethodDecl),
+    Import(&'p str),
 }
 
 #[derive(Debug)]
@@ -65,6 +72,16 @@ impl<'p> ProgramSymbols<'p> {
             }
         }
         None
+    }
+
+    fn find_method_decl(&self, name: &'p str) -> Option<MethodOrImport> {
+        if let Some(method) = self.methods.get(name) {
+            Some(MethodOrImport::Method(method))
+        } else if self.imports.contains(name) {
+            Some(MethodOrImport::Import(name))
+        } else {
+            None
+        }
     }
 
     fn add_table(&mut self, block_id: usize, parent_id: Option<usize>) -> Result<(), Error> {
@@ -129,20 +146,18 @@ impl<'p> ProgramSymbols<'p> {
 }
 
 pub struct SymbolTableBuilder<'p> {
-    program: &'p Program,
     symbols: ProgramSymbols<'p>,
 }
 
 impl<'p> SymbolTableBuilder<'p> {
-    pub fn new(program: &'p Program) -> SymbolTableBuilder<'p> {
+    pub fn new() -> SymbolTableBuilder<'p> {
         SymbolTableBuilder {
-            program,
             symbols: ProgramSymbols::new(),
         }
     }
 
-    pub fn process(&mut self) -> Result<&ProgramSymbols, Error> {
-        self.process_program()?;
+    pub fn process(&mut self, program: &'p Program) -> Result<&ProgramSymbols, Error> {
+        self.process_program(program)?;
         Ok(&self.symbols)
     }
 
@@ -157,15 +172,15 @@ impl<'p> SymbolTableBuilder<'p> {
         Ok(())
     }
 
-    fn process_program(&mut self) -> Result<(), Error> {
+    fn process_program(&mut self, program: &'p Program) -> Result<(), Error> {
         self.add_root()?;
-        for imp in &self.program.imports {
+        for imp in &program.imports {
             self.symbols.add_import(imp)?;
         }
-        for var in &self.program.fields {
+        for var in &program.fields {
             self.symbols.add_variable(consts::ROOT_BLOCK_ID, var)?;
         }
-        for method in &self.program.methods {
+        for method in &program.methods {
             self.symbols.add_method(method)?;
             self.process_method(method)?;
         }
@@ -211,56 +226,236 @@ impl<'p> SymbolTableBuilder<'p> {
     }
 }
 
+// Check semantics. Annotate expression types.
 pub struct SemanticChecker<'p> {
-    program: &'p Program,
     symbols: &'p ProgramSymbols<'p>,
-    inside_loop: Option<usize>,
+    current_method: RefCell<Option<String>>,
+    current_block: RefCell<usize>,
+    current_loop: RefCell<Option<usize>>,
+    errors: RefCell<Vec<Error>>,
 }
 
 impl<'p> SemanticChecker<'p> {
-    pub fn new(program: &'p Program, symbols: &'p ProgramSymbols<'p>) -> SemanticChecker<'p> {
+    pub fn new(symbols: &'p ProgramSymbols<'p>) -> SemanticChecker<'p> {
         SemanticChecker {
-            program,
             symbols,
-            inside_loop: None,
+            current_method: RefCell::new(None),
+            current_block: RefCell::new(consts::ROOT_BLOCK_ID),
+            current_loop: RefCell::new(None),
+            errors: RefCell::new(Vec::new()),
         }
     }
 
-    pub fn check(&self) -> Result<(), Error> {
-        self.check_main()?;
-        for m in &self.program.methods {
-            self.check_method(m)?;
+    pub fn check(&self, program: &'p mut Program) {
+        self.check_main();
+        for m in &mut program.methods {
+            self.check_method_decl(m);
         }
-        Ok(())
     }
 
-    pub fn check_main(&self) -> Result<(), Error> {
+    fn current_block(&self) -> usize {
+        *self.current_block.borrow()
+    }
+    fn err(&self, msg: &str) {
+        self.errors.borrow_mut().push(Error::new(None, msg));
+    }
+    fn err_span(&self, span: &Option<SrcSpan>, msg: &str) {
+        self.errors.borrow_mut().push(Error::new(*span, msg));
+    }
+
+    fn check_main(&self) {
         let fmain = self.symbols.methods.get(consts::MAIN_FUNC_NAME);
         match fmain {
-            None => return err!("Method \"main\" does not exist."),
+            None => self.err("Method \"main\" does not exist."),
             Some(f) => {
                 if f.tpe != Type::Void {
-                    return err!("Method \"main\" does not return void.");
+                    self.err("Method \"main\" does not return void.");
                 } else if f.arguments.is_empty() {
-                    return err!("Method \"main\" should not have any arguments.");
-                } else {
-                    return Ok(());
+                    self.err("Method \"main\" should not have any arguments.");
                 }
             }
         }
     }
-    pub fn check_method(&self, m: &MethodDecl) -> Result<(), Error> {
-        for s in &m.block.statements {
-            self.check_statement(s)?;
+    fn check_method_decl(&self, m: &mut MethodDecl) {
+        *self.current_method.borrow_mut() = Some(m.id.id.clone());
+        self.check_block(&mut m.block);
+        *self.current_method.borrow_mut() = None;
+    }
+
+    fn check_block(&self, b: &mut Block) {
+        let previous_block = *self.current_block.borrow();
+        *self.current_block.borrow_mut() = b.id;
+        for s in &mut b.statements {
+            self.check_statement(s);
         }
-        Ok(())
+        *self.current_block.borrow_mut() = previous_block;
     }
 
-    pub fn check_statement(&self, s: &Statement) -> Result<(), Error> {
-        Ok(())
+    fn check_statement(&self, s: &mut Statement) {
+        match &mut s.stmt {
+            Stmt_::Assign(assign) => {
+                self.check_loc_access(&mut assign.location);
+                self.check_expr(&mut assign.expr);
+            }
+            Stmt_::MethodCall(c) => {
+                self.check_method_call(c, &s.span);
+            }
+            Stmt_::If(i) => {
+                self.check_pred(&mut i.pred);
+                self.check_block(&mut i.if_block);
+                if let Some(else_block) = &mut i.else_block {
+                    self.check_block(else_block);
+                }
+            }
+            Stmt_::For(f) => {
+                self.check_statement(&mut f.init);
+                self.check_pred(&mut f.pred);
+                self.check_statement(&mut f.update);
+                self.check_loop_block(&mut f.block);
+            }
+            Stmt_::While(w) => {
+                self.check_pred(&mut w.pred);
+                self.check_loop_block(&mut w.block);
+            }
+            Stmt_::Return(r) => {
+                self.check_return(r, &s.span);
+            }
+            _ => (),
+        }
     }
 
-    pub fn check_expr(&self, s: &Statement) -> Result<(), Error> {
-        Ok(())
+    fn check_return(&self, r: &mut Option<Expr>, span: &Option<SrcSpan>) {
+        let method = self.current_method.borrow();
+        if method.as_ref().is_none() {
+            self.err_span(span, "Found return statement outside any methods.")
+        } else {
+            let decl = self
+                .symbols
+                .find_method_decl(method.as_ref().unwrap().as_str());
+            if let MethodOrImport::Method(m) = &decl.unwrap() {
+                let return_tpe = match r {
+                    None => Type::Void,
+                    Some(e) => self.check_expr(e),
+                };
+                if return_tpe != m.tpe {
+                    self.err_span(
+                        span,
+                        format!(
+                            "Type {} returned, but method {} expects {}.",
+                            return_tpe, m.id.id, m.tpe
+                        )
+                        .as_str(),
+                    );
+                }
+            } else {
+                self.err_span(
+                    span,
+                    format!(
+                        "Cannot find proper declaration of method {}.",
+                        method.as_ref().unwrap()
+                    )
+                    .as_str(),
+                );
+            }
+        }
+    }
+
+    fn check_loop_block(&self, b: &mut Block) {
+        let save_loop = *self.current_loop.borrow();
+        *self.current_loop.borrow_mut() = Some(b.id);
+        self.check_block(b);
+        *self.current_loop.borrow_mut() = save_loop;
+    }
+
+    fn check_pred(&self, pred: &mut Expr) {
+        let pred_tpe = self.check_expr(pred);
+        if pred_tpe != Type::Bool {
+            self.err_span(
+                &pred.span,
+                format!(
+                    "Predicate of if statement is of type {}, but bool expected.",
+                    pred_tpe
+                )
+                .as_str(),
+            );
+        }
+    }
+
+    fn check_method_call(&self, c: &mut MethodCall, span: &Option<SrcSpan>) -> Type {
+        let method = self.symbols.find_method_decl(c.name.id.as_str());
+        if method.is_none() {
+            self.err_span(
+                span,
+                format!("Unable to find method declaration {}.", c.name.id).as_str(),
+            );
+            return Type::Void;
+        }
+        if let Some(MethodOrImport::Method(decl)) = method {
+            if decl.arguments.len() != c.arguments.len() {
+                self.err_span(
+                    span,
+                    format!(
+                        "{} arguments expected, but {} was given.",
+                        decl.arguments.len(),
+                        c.arguments.len()
+                    )
+                    .as_str(),
+                );
+            }
+            for i in 0..decl.arguments.len() {
+                let expr = c.arguments.get_mut(i).unwrap();
+                let expected = &decl.arguments.get(i).unwrap().tpe;
+                let tpe = self.check_expr(expr);
+                if tpe != *expected {
+                    self.err_span(
+                        &expr.span,
+                        format!("{} expected, but {} given.", expected, tpe).as_str(),
+                    );
+                }
+            }
+            return decl.tpe.clone();
+        }
+        Type::Void
+    }
+
+    fn check_loc_access(&self, loc: &mut Location) {
+        let block = self.current_block();
+        match loc {
+            Location::Scalar(id) => {
+                if self.symbols.find_var_decl(block, id.id.as_str()).is_none() {
+                    self.err_span(
+                        &id.span,
+                        format!("Variable {} was not declared in this scope", id.id).as_str(),
+                    );
+                }
+            }
+            Location::Vector(id, expr) => {
+                let decl = self.symbols.find_var_decl(block, id.id.as_str());
+                if decl.is_none() {
+                    self.err_span(
+                        &id.span,
+                        format!("Variable {} was not declared in this scope", id.id).as_str(),
+                    );
+                }
+                match decl.unwrap().tpe {
+                    Type::Array(_, _) => (),
+                    _ => self.err_span(
+                        &id.span,
+                        format!("Indexing non-array type variable {}", id.id).as_str(),
+                    ),
+                };
+                let tpe = self.check_expr(expr);
+                if tpe != Type::Int {
+                    self.err_span(
+                        &expr.span,
+                        format!("Index of array access should be int, but found {}.", tpe).as_str(),
+                    );
+                }
+            }
+        }
+    }
+
+    fn check_expr(&self, e: &mut Expr) -> Type {
+        Type::Void
     }
 }

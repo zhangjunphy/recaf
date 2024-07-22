@@ -13,9 +13,9 @@ mod tests {
         let content = common::read_resource_file("resources/snippets/arith.dcf").unwrap();
         let lexer = Lexer::new(content.as_str());
         let state = ParserState::new();
-        let program = grammar::ProgramParser::new().parse(&state, lexer).unwrap();
-        let mut se = semantic::SymbolTableBuilder::new(&program);
-        let table = se.process().unwrap();
+        let mut program = grammar::ProgramParser::new().parse(&state, lexer).unwrap();
+        let mut se = semantic::SymbolTableBuilder::new();
+        let table = se.process(&mut program).unwrap();
         assert!(table.imports.contains("printf"));
         assert!(table.methods.contains_key("main"));
         let table_0 = table.variables.get(&0).unwrap();
