@@ -10,12 +10,17 @@ mod tests {
 
     #[test]
     fn test_symbol_table() {
-        let content = common::read_resource_file("resources/snippets/hello_world.dcf").unwrap();
+        let content = common::read_resource_file("resources/snippets/arith.dcf").unwrap();
         let lexer = Lexer::new(content.as_str());
         let state = ParserState::new();
         let program = grammar::ProgramParser::new().parse(&state, lexer).unwrap();
-        let mut se = semantic::SemanticChecker::new(&program);
-        se.process().unwrap();
-        se.get_symbol_table();
+        let mut se = semantic::SymbolTableBuilder::new(&program);
+        let table = se.process().unwrap();
+        assert!(table.imports.contains("printf"));
+        assert!(table.methods.contains_key("main"));
+        let table_0 = table.variables.get(&0).unwrap();
+        assert!(table_0.variables.contains_key("a"));
+        let table_1 = table.variables.get(&1).unwrap();
+        assert!(table_1.variables.contains_key("c"));
     }
 }

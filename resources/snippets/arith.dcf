@@ -1,0 +1,11 @@
+import printf;
+
+int a, b;
+
+void main() {
+    int c, d;
+    a = 1; b = 2;
+    c = a + b;
+    d = c * c;
+    printf("%d\n", d);
+}

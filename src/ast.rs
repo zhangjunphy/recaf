@@ -44,7 +44,7 @@ pub struct Block {
 
 #[derive(Debug, Clone)]
 pub struct Statement {
-    pub statement: Statement_,
+    pub stmt: Stmt_,
     pub span: Option<SrcSpan>,
 }
 
@@ -100,7 +100,7 @@ pub struct While {
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement_ {
+pub enum Stmt_ {
     Assign(Assign),
     MethodCall(MethodCall),
     If(If),
@@ -328,6 +328,7 @@ where
     fn print_block(&mut self, b: &Block) -> io::Result<usize> {
         self.indent();
         let mut size = 0;
+        size += self.indented_write(format!("[block_id: {}]", b.id).as_str())?;
         for fld in &b.fields {
             size += self.indented_write(format!("{}", fld).as_str())?;
         }
@@ -338,20 +339,20 @@ where
         Ok(size)
     }
     fn format_single_line_stmt(s: &Statement) -> String {
-        match &s.statement {
-            Statement_::Assign(l) => format!("{} = {}", l.location, l.expr),
-            Statement_::MethodCall(c) => format!("{c}"),
+        match &s.stmt {
+            Stmt_::Assign(l) => format!("{} = {}", l.location, l.expr),
+            Stmt_::MethodCall(c) => format!("{c}"),
             _ => panic!("Not single line statement!"),
         }
     }
     fn print_stmt(&mut self, s: &Statement) -> io::Result<usize> {
         let mut size = 0;
-        match &s.statement {
-            Statement_::Assign(l) => {
+        match &s.stmt {
+            Stmt_::Assign(l) => {
                 size += self.indented_write(format!("{} = {};", l.location, l.expr).as_str())?
             }
-            Statement_::MethodCall(c) => size += self.indented_write(format!("{c};").as_str())?,
-            Statement_::If(i) => {
+            Stmt_::MethodCall(c) => size += self.indented_write(format!("{c};").as_str())?,
+            Stmt_::If(i) => {
                 size += self.indented_write(format!("if ({}) {{", i.pred).as_str())?;
                 size += self.print_block(&i.if_block)?;
                 match &i.else_block {
@@ -363,7 +364,7 @@ where
                 };
                 size += self.indented_write("}")?;
             }
-            Statement_::For(f) => {
+            Stmt_::For(f) => {
                 size += self.indented_write(
                     format!(
                         "for ({}; {}; {}) {{",
@@ -376,17 +377,17 @@ where
                 size += self.print_block(&f.block)?;
                 size += self.indented_write("}")?;
             }
-            Statement_::While(w) => {
+            Stmt_::While(w) => {
                 size += self.indented_write(format!("while ({}) {{", w.pred).as_str())?;
                 size += self.print_block(&w.block)?;
                 size += self.indented_write("}")?;
             }
-            Statement_::Return(e) => match e {
+            Stmt_::Return(e) => match e {
                 None => size += self.indented_write("return;")?,
                 Some(e) => size += self.indented_write(format!("return {};", e).as_str())?,
             },
-            Statement_::Break => size += self.indented_write("break")?,
-            Statement_::Continue => size += self.indented_write("continue")?,
+            Stmt_::Break => size += self.indented_write("break")?,
+            Stmt_::Continue => size += self.indented_write("continue")?,
         }
         Ok(size)
     }

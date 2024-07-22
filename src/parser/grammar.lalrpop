@@ -157,11 +157,11 @@ pub Expr: Expr = {
 
 pub AssignStmt: Statement = {
     <start:@L> <loc: Location> "=" <e: Expr> ";" <end:@R> => Statement {
-        statement: Statement_::Assign(Assign{location: loc, expr: e}),
+        stmt: Stmt_::Assign(Assign{location: loc, expr: e}),
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <loc: Location> <lend:@R> "+=" <e: Expr> ";" <end:@R> => Statement {
-        statement: Statement_::Assign(Assign{
+        stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
                 expr: Expr_::BinOp(
@@ -178,7 +178,7 @@ pub AssignStmt: Statement = {
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <loc: Location> <lend:@R> "-=" <e: Expr> ";" <end:@R> => Statement {
-        statement: Statement_::Assign(Assign{
+        stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
                 expr: Expr_::BinOp(
@@ -195,7 +195,7 @@ pub AssignStmt: Statement = {
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <loc: Location> <lend:@R> "++" ";" <end:@R> => Statement {
-        statement: Statement_::Assign(Assign{
+        stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
                 expr: Expr_::BinOp(
@@ -215,7 +215,7 @@ pub AssignStmt: Statement = {
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <loc: Location> <lend:@R> "--" ";" <end:@R> => Statement {
-        statement: Statement_::Assign(Assign{
+        stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
                 expr: Expr_::BinOp(
@@ -239,7 +239,7 @@ pub AssignStmt: Statement = {
 pub SingleLineStmt: Statement = {
     <AssignStmt> => <>,
     <start:@L> <c: MethodCall> ";" <end:@R> => Statement {
-        statement: Statement_::MethodCall(c),
+        stmt: Stmt_::MethodCall(c),
         span: Some(SrcSpan::new(start, end)),
     },
 }
@@ -247,15 +247,15 @@ pub SingleLineStmt: Statement = {
 pub Statement: Statement = {
     <SingleLineStmt> => <>,
     <start:@L> "if" "(" <e: Expr>  ")" <bi: Block> "else" <be: Block> ";"? <end:@R> => Statement {
-        statement: Statement_::If(If{pred: e, if_block: bi, else_block: Some(be)}),
+        stmt: Stmt_::If(If{pred: e, if_block: bi, else_block: Some(be)}),
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "if" "(" <e: Expr>  ")" <b: Block> ";"? <end:@R> => Statement {
-        statement: Statement_::If(If{pred: e, if_block: b, else_block: None}),
+        stmt: Stmt_::If(If{pred: e, if_block: b, else_block: None}),
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "for" "(" <init: SingleLineStmt> ";" <pred: Expr> ";" <update: SingleLineStmt>  ")" <b: Block> ";"? <end:@R> => Statement {
-        statement: Statement_::For(For {
+        stmt: Stmt_::For(For {
             init: Box::new(init),
             pred: pred,
             update: Box::new(update),
@@ -264,22 +264,22 @@ pub Statement: Statement = {
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "while" "(" <pred: Expr> ")" <b: Block> ";"? <end:@R> => Statement {
-        statement: Statement_::While(While {
+        stmt: Stmt_::While(While {
             pred: pred,
             block: b,
         }),
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "return" <e: Expr?> ";" <end:@R> => Statement {
-        statement: Statement_::Return(e),
+        stmt: Stmt_::Return(e),
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "break" ";" <end:@R> => Statement {
-        statement: Statement_::Break,
+        stmt: Stmt_::Break,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "continue" ";" <end:@R> => Statement {
-        statement: Statement_::Continue,
+        stmt: Stmt_::Continue,
         span: Some(SrcSpan::new(start, end)),
     },
 }
