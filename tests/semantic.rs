@@ -13,14 +13,26 @@ mod tests {
         let content = common::read_resource_file("resources/snippets/arith.dcf").unwrap();
         let lexer = Lexer::new(content.as_str());
         let state = ParserState::new();
-        let mut program = grammar::ProgramParser::new().parse(&state, lexer).unwrap();
+        let program = grammar::ProgramParser::new().parse(&state, lexer).unwrap();
         let mut se = semantic::SymbolTableBuilder::new();
-        let table = se.process(&mut program).unwrap();
+        let table = se.process(&program).unwrap();
         assert!(table.imports.contains("printf"));
         assert!(table.methods.contains_key("main"));
         let table_0 = table.variables.get(&0).unwrap();
         assert!(table_0.variables.contains_key("a"));
         let table_1 = table.variables.get(&1).unwrap();
         assert!(table_1.variables.contains_key("c"));
+    }
+
+    #[test]
+    fn test_semantic_checker() {
+        let content = common::read_resource_file("resources/snippets/semantic/no_main.dcf").unwrap();
+        let lexer = Lexer::new(content.as_str());
+        let state = ParserState::new();
+        let mut program = grammar::ProgramParser::new().parse(&state, lexer).unwrap();
+        let mut se = semantic::SymbolTableBuilder::new();
+        let table = se.process(&program).unwrap();
+        let checker = semantic::SemanticChecker::new(table);
+        checker.check(&mut program);
     }
 }

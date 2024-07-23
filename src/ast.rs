@@ -1,4 +1,3 @@
-use crate::parser::util;
 use crate::source_pos::SrcSpan;
 use std::fmt;
 use std::io;
@@ -112,6 +111,15 @@ pub enum Literal {
     Char(char),
     Bool(bool),
     String(String),
+}
+
+pub fn literal_type(l: &Literal) -> Type {
+    match l {
+        Literal::Int(_) => Type::Int,
+        Literal::Char(_) => Type::Char,
+        Literal::Bool(_) => Type::Bool,
+        Literal::String(s) => str_type(s),
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]

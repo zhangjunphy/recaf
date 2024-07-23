@@ -4,22 +4,19 @@ use std::fmt;
 #[macro_export]
 macro_rules! err_pos {
     ($start:expr, $end:expr, $($arg:tt)*) => {{
-        let res = Err(Error::new(Some(SrcSpan::new($start, $end)), format!($($arg)*)));
-        res
+        Error::new(Some(SrcSpan::new($start, $end)), format!($($arg)*))
     }}
 }
 #[macro_export]
 macro_rules! err_span {
     ($e:expr, $($arg:tt)*) => {{
-        let res = Err(Error::new($e, format!($($arg)*)));
-        res
+        Error::new($e, format!($($arg)*))
     }}
 }
 #[macro_export]
 macro_rules! err {
     ($($arg:tt)*) => {{
-        let res = Err(Error::new(None, format!($($arg)*)));
-        res
+        Error::new(None, format!($($arg)*))
     }}
 }
 
@@ -32,7 +29,7 @@ pub struct Error {
 impl Error {
     pub fn new<S: Into<String>>(span: Option<SrcSpan>, msg: S) -> Error {
         Error {
-            span,
+            span: span,
             msg: msg.into(),
         }
     }

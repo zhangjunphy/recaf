@@ -1,7 +1,7 @@
+use crate::err_pos;
 use crate::error::Error;
 use crate::parser::util;
 use crate::source_pos::{Pos, SrcSpan};
-use crate::err_pos;
 use regex::Regex;
 use std::collections::BTreeSet;
 
@@ -170,11 +170,11 @@ impl<'input> Lexer<'input> {
         } else {
             let start = self.pos;
             self.advance(1);
-            return Some(err_pos!(
+            return Some(Err(err_pos!(
                 start,
                 self.pos,
                 "Unable to handle character: '{next_char}'",
-            ));
+            )));
         }
     }
 
@@ -369,20 +369,24 @@ impl<'input> Lexer<'input> {
             res = ec;
         } else if self.to_scan().starts_with('\\') {
             let end = self.forward_pos(1);
-            return Some(err_pos!(start, end.unwrap(), "Invalid escape sequence.",));
+            return Some(Err(err_pos!(
+                start,
+                end.unwrap(),
+                "Invalid escape sequence."
+            )));
         } else if let Some((c, _)) = self.peek_next() {
             res = c;
             self.advance(1);
         } else {
-            return Some(err_pos!(
+            return Some(Err(err_pos!(
                 start,
                 self.pos,
                 "Char literal reaches end of file.",
-            ));
+            )));
         }
         let rquote = self.peek_next();
         if rquote.is_none() || rquote.unwrap().0 != '\'' {
-            return Some(err_pos!(start, self.pos, "Char literal not enclosed.",));
+            return Some(Err(err_pos!(start, self.pos, "Char literal not enclosed.")));
         }
         self.advance(1);
         Some(Ok((start, Tok::Char(res), self.pos)))
@@ -403,16 +407,16 @@ impl<'input> Lexer<'input> {
                 res.push(c);
             } else if self.to_scan().starts_with('\\') {
                 let end = self.forward_pos(1).unwrap();
-                return Some(err_pos!(self.pos, end, "Invalid escape sequence.",));
+                return Some(Err(err_pos!(self.pos, end, "Invalid escape sequence.")));
             } else if let Some(c) = self.to_scan().chars().next() {
                 self.advance(1);
                 res.push(c);
             } else {
-                return Some(err_pos!(
+                return Some(Err(err_pos!(
                     start,
                     self.pos,
                     "String literal reaches end of file.",
-                ));
+                )));
             }
         }
         Some(Ok((start, Tok::String(res), self.pos)))
