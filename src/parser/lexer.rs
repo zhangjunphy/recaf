@@ -2,6 +2,7 @@ use crate::err_pos;
 use crate::error::Error;
 use crate::parser::util;
 use crate::source_pos::{Pos, SrcSpan};
+use core::fmt;
 use regex::Regex;
 use std::collections::BTreeSet;
 
@@ -428,5 +429,11 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scan()
+    }
+}
+
+impl fmt::Display for Tok {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }

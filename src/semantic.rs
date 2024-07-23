@@ -7,13 +7,13 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
-pub struct VariableTable<'p> {
+pub struct VariableTable {
     pub block_id: usize, // Block this table belongs to.
     pub parent_id: Option<usize>,
-    pub variables: HashMap<String, &'p FieldDecl>,
+    pub variables: HashMap<String, FieldDecl>,
 }
 
-impl<'p> VariableTable<'p> {
+impl VariableTable {
     fn new(block_id: usize, parent_id: Option<usize>) -> Self {
         VariableTable {
             block_id,
@@ -29,13 +29,13 @@ pub enum MethodOrImport<'p> {
 }
 
 #[derive(Debug)]
-pub struct ProgramSymbols<'p> {
+pub struct ProgramSymbols {
     pub imports: HashSet<String>,
-    pub methods: HashMap<String, &'p MethodDecl>,
-    pub variables: HashMap<usize, VariableTable<'p>>,
+    pub methods: HashMap<String, MethodDecl>,
+    pub variables: HashMap<usize, VariableTable>,
 }
 
-impl<'p> ProgramSymbols<'p> {
+impl ProgramSymbols {
     fn new() -> Self {
         ProgramSymbols {
             imports: HashSet::new(),
@@ -49,16 +49,11 @@ impl<'p> ProgramSymbols<'p> {
         self.variables.get(&parent)
     }
 
-    fn find_mut_parent(&mut self, block: usize) -> Option<&'p mut VariableTable> {
-        let parent = self.variables.get(&block).and_then(|t| t.parent_id)?;
-        self.variables.get_mut(&parent)
-    }
-
-    fn find_var_decl(&self, block: usize, var: &str) -> Option<&FieldDecl> {
+    fn find_var_decl<'p>(&'p self, block: usize, var: &str) -> Option<&'p FieldDecl> {
         let lookup_non_recur = |block: usize, var: &str| {
             let table = self.variables.get(&block)?;
             let decl = table.variables.get(var)?;
-            Some(*decl)
+            Some(decl)
         };
         let mut cur_block = Some(block);
         while cur_block.is_some() {
@@ -74,8 +69,8 @@ impl<'p> ProgramSymbols<'p> {
         None
     }
 
-    fn find_method_decl(&self, name: &'p str) -> Option<MethodOrImport> {
-        if let Some(method) = self.methods.get(name) {
+    fn find_method_decl<'p>(&'p self, name: &'p str) -> Option<MethodOrImport> {
+        if let Some(method) = &self.methods.get(name) {
             Some(MethodOrImport::Method(method))
         } else if self.imports.contains(name) {
             Some(MethodOrImport::Import(name))
@@ -114,8 +109,8 @@ impl<'p> ProgramSymbols<'p> {
         }
     }
 
-    fn add_method(&mut self, m: &'p MethodDecl) -> Result<(), Error> {
-        let is_new = self.methods.insert(m.id.id.clone(), m);
+    fn add_method(&mut self, m: &MethodDecl) -> Result<(), Error> {
+        let is_new = self.methods.insert(m.id.id.clone(), m.clone());
         if is_new.is_some() {
             Err(err_span!(
                 m.span,
@@ -127,9 +122,9 @@ impl<'p> ProgramSymbols<'p> {
         }
     }
 
-    fn add_variable(&mut self, block: usize, var: &'p FieldDecl) -> Result<(), Error> {
+    fn add_variable(&mut self, block: usize, var: &FieldDecl) -> Result<(), Error> {
         if let Some(table) = self.variables.get_mut(&block) {
-            if let Some(old) = table.variables.insert(var.id.id.clone(), var) {
+            if let Some(old) = table.variables.insert(var.id.id.clone(), var.clone()) {
                 if let Some(span) = old.span {
                     Err(err_span!(
                         var.span,
@@ -156,20 +151,20 @@ impl<'p> ProgramSymbols<'p> {
     }
 }
 
-pub struct SymbolTableBuilder<'p> {
-    symbols: ProgramSymbols<'p>,
+pub struct SymbolTableBuilder {
+    symbols: ProgramSymbols,
 }
 
-impl<'p> SymbolTableBuilder<'p> {
-    pub fn new() -> SymbolTableBuilder<'p> {
+impl SymbolTableBuilder {
+    pub fn new() -> SymbolTableBuilder {
         SymbolTableBuilder {
             symbols: ProgramSymbols::new(),
         }
     }
 
-    pub fn process(&mut self, program: &'p Program) -> Result<&ProgramSymbols, Error> {
+    pub fn process(&mut self, program: &Program) -> Result<ProgramSymbols, Error> {
         self.process_program(program)?;
-        Ok(&self.symbols)
+        Ok(std::mem::replace(&mut self.symbols, ProgramSymbols::new()))
     }
 
     fn add_root(&mut self) -> Result<(), Error> {
@@ -183,7 +178,7 @@ impl<'p> SymbolTableBuilder<'p> {
         Ok(())
     }
 
-    fn process_program(&mut self, program: &'p Program) -> Result<(), Error> {
+    fn process_program(&mut self, program: &Program) -> Result<(), Error> {
         self.add_root()?;
         for imp in &program.imports {
             self.symbols.add_import(imp)?;
@@ -198,7 +193,7 @@ impl<'p> SymbolTableBuilder<'p> {
         Ok(())
     }
 
-    fn process_method(&mut self, m: &'p MethodDecl) -> Result<(), Error> {
+    fn process_method(&mut self, m: &MethodDecl) -> Result<(), Error> {
         self.symbols
             .add_table(m.block.id, Some(consts::ROOT_BLOCK_ID))?;
         for v in &m.arguments {
@@ -208,7 +203,7 @@ impl<'p> SymbolTableBuilder<'p> {
         Ok(())
     }
 
-    fn process_block(&mut self, b: &'p Block, parent: Option<usize>) -> Result<(), Error> {
+    fn process_block(&mut self, b: &Block, parent: Option<usize>) -> Result<(), Error> {
         self.symbols.add_table_if_nonexist(b.id, parent);
         for v in &b.fields {
             self.symbols.add_variable(b.id, v)?;
@@ -219,7 +214,7 @@ impl<'p> SymbolTableBuilder<'p> {
         Ok(())
     }
 
-    fn process_stmt(&mut self, s: &'p Statement, block_id: usize) -> Result<(), Error> {
+    fn process_stmt(&mut self, s: &Statement, block_id: usize) -> Result<(), Error> {
         let s_ = &s.stmt;
         match s_ {
             Stmt_::If(i) => {
@@ -239,7 +234,7 @@ impl<'p> SymbolTableBuilder<'p> {
 
 // Check semantics. Annotate expression types.
 pub struct SemanticChecker<'p> {
-    symbols: &'p ProgramSymbols<'p>,
+    symbols: &'p ProgramSymbols,
     current_method: RefCell<Option<String>>,
     current_block: RefCell<usize>,
     current_loop: RefCell<Option<usize>>,
@@ -247,7 +242,7 @@ pub struct SemanticChecker<'p> {
 }
 
 impl<'p> SemanticChecker<'p> {
-    pub fn new(symbols: &'p ProgramSymbols<'p>) -> SemanticChecker<'p> {
+    pub fn new(symbols: &'p ProgramSymbols) -> SemanticChecker<'p> {
         SemanticChecker {
             symbols,
             current_method: RefCell::new(None),
@@ -257,12 +252,12 @@ impl<'p> SemanticChecker<'p> {
         }
     }
 
-    pub fn check(&self, program: &'p mut Program) -> &RefCell<Vec<Error>> {
+    pub fn check(&self, program: &mut Program) -> Vec<Error> {
         self.check_main();
         for m in &mut program.methods {
             self.check_method_decl(m);
         }
-        &self.errors
+        std::mem::replace(&mut self.errors.borrow_mut(), Vec::new())
     }
 
     fn check_main(&self) {
@@ -271,8 +266,11 @@ impl<'p> SemanticChecker<'p> {
             None => self.err(err!("Method \"main\" does not exist.")),
             Some(f) => {
                 if f.tpe != Type::Void {
-                    self.err(err!("Method \"main\" does not return void."));
-                } else if f.arguments.is_empty() {
+                    self.err(err!(
+                        "Method \"main\" should return void, but was give {}.",
+                        f.tpe
+                    ));
+                } else if !f.arguments.is_empty() {
                     self.err(err!("Method \"main\" should not have any arguments."));
                 }
             }
@@ -560,5 +558,19 @@ impl<'p> SemanticChecker<'p> {
         } else {
             arr_decl
         }
+    }
+}
+
+pub fn check<'p>(p: &'p mut Program) -> Result<ProgramSymbols, Vec<Error>> {
+    let mut se = SymbolTableBuilder::new();
+    let table = se.process(p).unwrap();
+    let errors = {
+        let checker = SemanticChecker::new(&table);
+        checker.check(p)
+    };
+    if errors.is_empty() {
+        Ok(table)
+    } else {
+        Err(errors)
     }
 }

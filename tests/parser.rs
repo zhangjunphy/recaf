@@ -1,7 +1,7 @@
 use recaf::ast::*;
 use recaf::parser::grammar;
 use recaf::parser::lexer::Lexer;
-use recaf::parser::ParserState;
+use recaf::parser::state::ParserState;
 
 fn parse_expr(s: &str) -> Expr {
     let lexer = Lexer::new(s);

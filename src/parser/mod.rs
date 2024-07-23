@@ -1,32 +1,38 @@
 pub mod lexer;
+pub mod state;
 pub mod util;
+
+use crate::ast::*;
+use crate::err_span;
+use crate::error::Error;
+use crate::parser::grammar::ProgramParser;
+use crate::parser::lexer::Lexer;
+use crate::parser::state::ParserState;
+use crate::source_pos::SrcSpan;
 
 use lalrpop_util::lalrpop_mod;
 lalrpop_mod!(pub grammar, "/parser/grammar.rs");
 
-use crate::ast::*;
-use crate::source_pos::SrcSpan;
-use std::cell::RefCell;
-
-pub struct ParserState {
-    block_count: RefCell<usize>,
-}
-
-impl ParserState {
-    pub fn new() -> Self {
-        ParserState {
-            block_count: RefCell::new(crate::consts::ROOT_BLOCK_ID + 1),
+pub fn parse(content: &String) -> Result<Program, Error> {
+    use lalrpop_util::ParseError;
+    let state = ParserState::new();
+    let ast = ProgramParser::new().parse(&state, Lexer::new(content));
+    ast.map_err(|e| match &e {
+        ParseError::InvalidToken { location } => {
+            err_span!(Some(SrcSpan::new(*location, *location)), "{}", e)
         }
-    }
-
-    pub fn block(&self, fields: Vec<FieldDecl>, stmts: Vec<Statement>, span: SrcSpan) -> Block {
-        let block_id = *self.block_count.borrow();
-        *self.block_count.borrow_mut() += 1;
-        Block {
-            id: block_id,
-            fields,
-            statements: stmts,
-            span: Some(span),
+        ParseError::UnrecognizedEof { location, expected:_ } => {
+            err_span!(Some(SrcSpan::new(*location, *location)), "{}", e)
         }
-    }
+        ParseError::UnrecognizedToken {
+            token: (l, _, r),
+            expected: _,
+        } => {
+            err_span!(Some(SrcSpan::new(*l, *r)), "{}", e)
+        }
+        ParseError::ExtraToken { token: (l, _, r) } => {
+            err_span!(Some(SrcSpan::new(*l, *r)), "{}", e)
+        }
+        ParseError::User { error } => error.clone(),
+    })
 }
