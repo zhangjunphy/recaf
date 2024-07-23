@@ -55,11 +55,8 @@ mod tests {
         match parse_expr("f(a)").expr {
             Expr_::MethodCall(MethodCall { name, arguments }) => {
                 assert_eq!(name.id, "f");
-                match &arguments[0] {
-                    Argument::Expr(e) => match &e.expr {
-                        Expr_::Location(Location::Scalar(id)) => assert_eq!(id.id, "a"),
-                        _ => panic!(),
-                    },
+                match &arguments[0].expr {
+                    Expr_::Location(Location::Scalar(id)) => assert_eq!(id.id, "a"),
                     _ => panic!(),
                 }
             }
