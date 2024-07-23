@@ -29,7 +29,7 @@ pub struct Error {
 impl Error {
     pub fn new<S: Into<String>>(span: Option<SrcSpan>, msg: S) -> Error {
         Error {
-            span: span,
+            span,
             msg: msg.into(),
         }
     }

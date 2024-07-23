@@ -2,6 +2,7 @@ use clap::Parser;
 use recaf::ast::ASTPrinter;
 use recaf::cli::{Args, Stage};
 use recaf::parser::lexer::Lexer;
+use recaf::semantic;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -51,8 +52,14 @@ fn parse(file: &String) {
     let mut printer = ASTPrinter::new(stdout, 2);
 
     match recaf::parser::parse(&content) {
-        Ok(program) => {
+        Ok(mut program) => {
+            println!("AST:");
             printer.print(&program).expect("Unable to print ast.");
+            if let Err(errors) = semantic::check(&mut program) {
+                for e in &errors {
+                    eprintln!("{}", e);
+                }
+            }
         }
         Err(err) => eprintln!("{}", err),
     }
