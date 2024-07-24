@@ -172,6 +172,7 @@ pub enum BinOp {
     GT,
     LE,
     GE,
+
     EQ,
     NE,
 
@@ -181,11 +182,12 @@ pub enum BinOp {
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use crate::parser::util::escape_string_literal;
         match self {
             Literal::Int(v) => write!(f, "{}", v),
             Literal::Char(v) => write!(f, "\'{}\'", v),
             Literal::Bool(v) => write!(f, "{}", v),
-            Literal::String(v) => write!(f, "\"{}\"", v),
+            Literal::String(v) => write!(f, "\"{}\"", escape_string_literal(v)),
         }
     }
 }
