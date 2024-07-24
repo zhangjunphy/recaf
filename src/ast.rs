@@ -279,6 +279,17 @@ impl fmt::Display for Expr {
     }
 }
 
+mod visit {
+    use super::*;
+
+    pub trait Visitor<T> {
+        fn visit_program(&mut self, p: &Program) -> T;
+        fn visit_import(&mut self, f: &ImportDecl) -> T;
+        fn visit_field(&mut self, f: &FieldDecl) -> T;
+        fn visit_method(&mut self, m: &MethodDecl) -> T;
+    }
+}
+
 pub struct ASTPrinter<'buf, T>
 where
     T: io::Write,

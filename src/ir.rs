@@ -9,7 +9,7 @@ pub enum Locality {
 pub struct Var {
     pub id: usize,
     pub tpe: ast::Type,
-    pub decl: ast::FieldDecl,
+    pub decl: Option<ast::FieldDecl>,
     pub span: Option<SrcSpan>,
     pub locality: Locality,
 }
@@ -52,7 +52,7 @@ pub struct Label {
     pub id: String,
 }
 
-pub enum IR {
+pub enum Statements {
     Assign {
         dst: Var,
         src: Val,
@@ -102,18 +102,31 @@ pub enum IR {
     },
     NNeg {
         dst: Var,
-        v: Val,
+        val: Val,
     },
     LNeg {
         dst: Var,
-        v: Val,
+        val: Val,
     },
     BrUncon {
-        l: Label,
+        label: Label,
     },
     BrCon {
         pred: Val,
         label_true: Label,
         label_false: Label,
     },
+}
+
+pub struct BasicBlock {
+    pub id: String,
+    pub args: Vec<Var>,
+    pub statements: Vec<Statements>
+}
+
+pub struct Function {
+    pub name: String,
+    pub args: Vec<Var>,
+    pub tpe: ast::Type,
+    pub body: Vec<BasicBlock>,
 }
