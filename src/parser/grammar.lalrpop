@@ -332,9 +332,9 @@ pub FieldDeclList: Vec<FieldDecl> = {
     <t: Type> <fields: Comma<Field>> ";" =>
         fields.into_iter().map(|(id, size, span)| {
             match size {
-                None => FieldDecl{id: id, tpe: t.clone(), block_id: 0, span: Some(span)},
+                None => FieldDecl{id: id, tpe: t.clone(), span: Some(span)},
                 Some(size) =>
-                    FieldDecl{id: id, tpe: Type::Array(Box::new(t.clone()), size), block_id:0, span: Some(span)}
+                    FieldDecl{id: id, tpe: Type::Array(Box::new(t.clone()), size), span: Some(span)}
             }
         }).collect(),
 }
@@ -350,7 +350,7 @@ pub Block : Block = {
 
 pub MethodArg: FieldDecl = {
     <start:@L> <t: Type> <id: ID> <end:@R> => FieldDecl {
-        id: id, tpe: t, block_id: 0, span: Some(SrcSpan::new(start, end)),
+        id: id, tpe: t, span: Some(SrcSpan::new(start, end)),
     },
 }
 

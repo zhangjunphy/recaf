@@ -20,7 +20,6 @@ pub struct ImportDecl {
 pub struct FieldDecl {
     pub id: ID,
     pub tpe: Type,
-    pub block_id: usize,
     pub span: Option<SrcSpan>,
 }
 
@@ -284,9 +283,12 @@ mod visit {
 
     pub trait Visitor<T> {
         fn visit_program(&mut self, p: &Program) -> T;
-        fn visit_import(&mut self, f: &ImportDecl) -> T;
+        fn visit_import(&mut self, i: &ImportDecl) -> T;
         fn visit_field(&mut self, f: &FieldDecl) -> T;
         fn visit_method(&mut self, m: &MethodDecl) -> T;
+        fn visit_block(&mut self, b: &Block) -> T;
+        fn visit_stmt(&mut self, s: &Statement) -> T;
+        fn visit_expr(&mut self, e: &Expr) -> T;
     }
 }
 
@@ -299,31 +301,33 @@ where
     depth: usize,
 }
 
-impl<'buf, T> ASTPrinter<'buf, T>
+impl<'buf, T> visit::Visitor<io::Result<usize>> for ASTPrinter<'buf, T>
 where
     T: io::Write,
 {
-    pub fn new(buf: &'buf mut T, indent: usize) -> Self {
-        ASTPrinter {
-            indent,
-            buf,
-            depth: 0,
-        }
-    }
-    pub fn print(&mut self, p: &Program) -> io::Result<usize> {
+    fn visit_program(&mut self, p: &Program) -> io::Result<usize> {
         let mut size = 0;
         for imp in &p.imports {
-            size += self.indented_write(format!("{}", imp).as_str())?;
+            size += self.visit_import(imp)?;
         }
         for fld in &p.fields {
-            size += self.indented_write(format!("{}", fld).as_str())?;
+            size += self.visit_field(fld)?;
         }
         for method in &p.methods {
-            size += self.print_method(method)?;
+            size += self.visit_method(method)?;
         }
         Ok(size)
     }
-    fn print_method(&mut self, m: &MethodDecl) -> io::Result<usize> {
+
+    fn visit_import(&mut self, i: &ImportDecl) -> io::Result<usize> {
+        self.indented_write(format!("{}", i).as_str())
+    }
+
+    fn visit_field(&mut self, f: &FieldDecl) -> io::Result<usize> {
+        self.indented_write(format!("{}", f).as_str())
+    }
+
+    fn visit_method(&mut self, m: &MethodDecl) -> io::Result<usize> {
         let mut size = 0;
         let args_str: Vec<String> = m
             .arguments
@@ -334,11 +338,12 @@ where
         size += self.indented_write(
             format!("{} {} ({}) {{", m.tpe, m.id.id, args_str.join(", ")).as_str(),
         )?;
-        size += self.print_block(&m.block)?;
+        size += self.visit_block(&m.block)?;
         size += self.indented_write("}")?;
         Ok(size)
     }
-    fn print_block(&mut self, b: &Block) -> io::Result<usize> {
+
+    fn visit_block(&mut self, b: &Block) -> io::Result<usize> {
         self.indent();
         let mut size = 0;
         size += self.indented_write(format!("[block_id: {}]", b.id).as_str())?;
@@ -346,19 +351,13 @@ where
             size += self.indented_write(format!("{}", fld).as_str())?;
         }
         for stmt in &b.statements {
-            size += self.print_stmt(stmt)?;
+            size += self.visit_stmt(stmt)?;
         }
         self.unindent();
         Ok(size)
     }
-    fn format_single_line_stmt(s: &Statement) -> String {
-        match &s.stmt {
-            Stmt_::Assign(l) => format!("{} = {}", l.location, l.expr),
-            Stmt_::MethodCall(c) => format!("{c}"),
-            _ => panic!("Not single line statement!"),
-        }
-    }
-    fn print_stmt(&mut self, s: &Statement) -> io::Result<usize> {
+
+    fn visit_stmt(&mut self, s: &Statement) -> io::Result<usize> {
         let mut size = 0;
         match &s.stmt {
             Stmt_::Assign(l) => {
@@ -367,12 +366,12 @@ where
             Stmt_::MethodCall(c) => size += self.indented_write(format!("{c};").as_str())?,
             Stmt_::If(i) => {
                 size += self.indented_write(format!("if ({}) {{", i.pred).as_str())?;
-                size += self.print_block(&i.if_block)?;
+                size += self.visit_block(&i.if_block)?;
                 match &i.else_block {
                     None => size += self.indented_write("}")?,
                     Some(b) => {
                         size += self.indented_write("} else {")?;
-                        size += self.print_block(&b)?;
+                        size += self.visit_block(&b)?;
                     }
                 };
                 size += self.indented_write("}")?;
@@ -387,12 +386,12 @@ where
                     )
                     .as_str(),
                 )?;
-                size += self.print_block(&f.block)?;
+                size += self.visit_block(&f.block)?;
                 size += self.indented_write("}")?;
             }
             Stmt_::While(w) => {
                 size += self.indented_write(format!("while ({}) {{", w.pred).as_str())?;
-                size += self.print_block(&w.block)?;
+                size += self.visit_block(&w.block)?;
                 size += self.indented_write("}")?;
             }
             Stmt_::Return(e) => match e {
@@ -403,6 +402,35 @@ where
             Stmt_::Continue => size += self.indented_write("continue")?,
         }
         Ok(size)
+    }
+
+    fn visit_expr(&mut self, e: &Expr) -> io::Result<usize> {
+        self.buf.write(format!("{}", e).as_bytes())
+    }
+}
+
+impl<'buf, T> ASTPrinter<'buf, T>
+where
+    T: io::Write,
+{
+    pub fn new(buf: &'buf mut T, indent: usize) -> Self {
+        ASTPrinter {
+            indent,
+            buf,
+            depth: 0,
+        }
+    }
+    pub fn print(&mut self, p: &Program) -> io::Result<usize> {
+        use visit::Visitor;
+        self.visit_program(p)
+    }
+
+    fn format_single_line_stmt(s: &Statement) -> String {
+        match &s.stmt {
+            Stmt_::Assign(l) => format!("{} = {}", l.location, l.expr),
+            Stmt_::MethodCall(c) => format!("{c}"),
+            _ => panic!("Not single line statement!"),
+        }
     }
     fn indented_write(&mut self, s: &str) -> io::Result<usize> {
         let mut size = 0;
@@ -421,3 +449,4 @@ where
         self.depth -= 1
     }
 }
+
