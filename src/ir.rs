@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::source_pos::SrcSpan;
+use std::rc::Rc;
 
 pub enum Locality {
     Global,
@@ -49,7 +50,24 @@ pub enum EqOp {
 }
 
 pub struct Label {
-    pub id: String,
+    pub id: usize,
+}
+
+impl Label {
+    pub fn new(id: usize) -> Self {
+        Label { id }
+    }
+}
+
+pub enum Branch {
+    UnCon {
+        label: Label,
+    },
+    Con {
+        pred: Val,
+        label_true: Label,
+        label_false: Label,
+    },
 }
 
 pub enum Statements {
@@ -108,20 +126,14 @@ pub enum Statements {
         dst: Var,
         val: Val,
     },
-    BrUncon {
-        label: Label,
-    },
-    BrCon {
-        pred: Val,
-        label_true: Label,
-        label_false: Label,
-    },
+    Br(Branch),
 }
 
 pub struct BasicBlock {
-    pub id: String,
-    pub args: Vec<Var>,
-    pub statements: Vec<Statements>
+    pub label: Label,
+    pub args: Vec<Rc<Var>>,
+    pub statements: Vec<Statements>,
+    pub br: Branch,
 }
 
 pub struct Function {

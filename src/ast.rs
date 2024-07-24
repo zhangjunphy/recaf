@@ -278,7 +278,7 @@ impl fmt::Display for Expr {
     }
 }
 
-mod visit {
+pub mod visit {
     use super::*;
 
     pub trait Visitor<T> {
