@@ -7,6 +7,7 @@ pub enum Locality {
     Local,
 }
 
+#[derive(Clone)]
 pub struct Var {
     pub id: usize,
     pub tpe: ast::Type,
@@ -133,7 +134,7 @@ pub struct BasicBlock {
     pub label: Label,
     pub args: Vec<Rc<Var>>,
     pub statements: Vec<Statements>,
-    pub br: Branch,
+    pub br: Option<Branch>,
 }
 
 pub struct Function {
