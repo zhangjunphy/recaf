@@ -8,16 +8,16 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct VariableTable {
-    pub block_id: usize, // Block this table belongs to.
-    pub parent_id: Option<usize>,
+    pub scope: Scope, // Block this table belongs to.
+    pub parent_scope: Option<Scope>,
     pub variables: HashMap<String, FieldDecl>,
 }
 
 impl VariableTable {
-    fn new(block_id: usize, parent_id: Option<usize>) -> Self {
+    fn new(scope: Scope, parent_scope: Option<Scope>) -> Self {
         VariableTable {
-            block_id,
-            parent_id,
+            scope,
+            parent_scope,
             variables: HashMap::new(),
         }
     }
@@ -32,7 +32,7 @@ pub enum MethodOrImport<'p> {
 pub struct ProgramSymbols {
     pub imports: HashSet<String>,
     pub methods: HashMap<String, MethodDecl>,
-    pub variables: HashMap<usize, VariableTable>,
+    pub variables: HashMap<Scope, VariableTable>,
 }
 
 impl ProgramSymbols {
@@ -44,18 +44,18 @@ impl ProgramSymbols {
         }
     }
 
-    fn find_parent(&self, block: usize) -> Option<&VariableTable> {
-        let parent = self.variables.get(&block).and_then(|t| t.parent_id)?;
+    fn find_parent(&self, scope: &Scope) -> Option<&VariableTable> {
+        let parent = self.variables.get(scope).and_then(|t| t.parent_scope)?;
         self.variables.get(&parent)
     }
 
-    fn find_var_decl<'p>(&'p self, block: usize, var: &str) -> Option<&'p FieldDecl> {
-        let lookup_non_recur = |block: usize, var: &str| {
-            let table = self.variables.get(&block)?;
+    pub fn find_var_decl<'p>(&'p self, scope: &Scope, var: &str) -> Option<&'p FieldDecl> {
+        let lookup_non_recur = |scope: &Scope, var: &str| {
+            let table = self.variables.get(scope)?;
             let decl = table.variables.get(var)?;
             Some(decl)
         };
-        let mut cur_block = Some(block);
+        let mut cur_block = Some(scope);
         while cur_block.is_some() {
             let res = lookup_non_recur(cur_block.unwrap(), var);
             if res.is_some() {
@@ -63,36 +63,36 @@ impl ProgramSymbols {
             } else {
                 cur_block = self
                     .find_parent(cur_block.unwrap())
-                    .and_then(|t| Some(t.block_id));
+                    .and_then(|t| Some(&t.scope));
             }
         }
         None
     }
 
-    fn find_method_decl<'p>(&'p self, name: &'p str) -> Option<MethodOrImport> {
+    pub fn find_method_decl<'p>(&'p self, name: &str) -> Option<MethodOrImport> {
         if let Some(method) = &self.methods.get(name) {
             Some(MethodOrImport::Method(method))
         } else if self.imports.contains(name) {
-            Some(MethodOrImport::Import(name))
+            Some(MethodOrImport::Import(self.imports.get(name).unwrap()))
         } else {
             None
         }
     }
 
-    fn add_table(&mut self, block_id: usize, parent_id: Option<usize>) -> Result<(), Error> {
+    fn add_table(&mut self, scope: Scope, parent_scope: Option<Scope>) -> Result<(), Error> {
         let old = self
             .variables
-            .insert(block_id, VariableTable::new(block_id, parent_id));
+            .insert(scope, VariableTable::new(scope, parent_scope));
         if old.is_some() {
-            return Err(err!("Symbol table present for block {block_id}"));
+            return Err(err!("Symbol table present for scope {}", scope.id));
         }
         Ok(())
     }
 
-    fn add_table_if_nonexist(&mut self, block_id: usize, parent_id: Option<usize>) {
-        if !self.variables.contains_key(&block_id) {
+    fn add_table_if_nonexist(&mut self, scope: Scope, parent_scope: Option<Scope>) {
+        if !self.variables.contains_key(&scope) {
             self.variables
-                .insert(block_id, VariableTable::new(block_id, parent_id));
+                .insert(scope, VariableTable::new(scope, parent_scope));
         }
     }
 
@@ -122,8 +122,8 @@ impl ProgramSymbols {
         }
     }
 
-    fn add_variable(&mut self, block: usize, var: &FieldDecl) -> Result<(), Error> {
-        if let Some(table) = self.variables.get_mut(&block) {
+    fn add_variable(&mut self, scope: &Scope, var: &FieldDecl) -> Result<(), Error> {
+        if let Some(table) = self.variables.get_mut(scope) {
             if let Some(old) = table.variables.insert(var.id.id.clone(), var.clone()) {
                 if let Some(span) = old.span {
                     Err(err_span!(
@@ -145,7 +145,8 @@ impl ProgramSymbols {
         } else {
             Err(err_span!(
                 var.span,
-                "Symbol table for block {block} does not exist!"
+                "Symbol table for scope {} does not exist!",
+                scope.id
             ))
         }
     }
@@ -169,8 +170,8 @@ impl SymbolTableBuilder {
 
     fn add_root(&mut self) -> Result<(), Error> {
         let old = self.symbols.variables.insert(
-            consts::ROOT_BLOCK_ID,
-            VariableTable::new(consts::ROOT_BLOCK_ID, None),
+            Scope::new(consts::ROOT_SCOPE_ID),
+            VariableTable::new(Scope::new(consts::ROOT_SCOPE_ID), None),
         );
         if old.is_some() {
             return Err(err!("Symbol table present for program root"));
@@ -184,7 +185,7 @@ impl SymbolTableBuilder {
             self.symbols.add_import(imp)?;
         }
         for var in &program.fields {
-            self.symbols.add_variable(consts::ROOT_BLOCK_ID, var)?;
+            self.symbols.add_variable(&Scope::new(consts::ROOT_SCOPE_ID), var)?;
         }
         for method in &program.methods {
             self.symbols.add_method(method)?;
@@ -195,36 +196,36 @@ impl SymbolTableBuilder {
 
     fn process_method(&mut self, m: &MethodDecl) -> Result<(), Error> {
         self.symbols
-            .add_table(m.block.id, Some(consts::ROOT_BLOCK_ID))?;
+            .add_table(m.block.scope, Some(Scope::new(consts::ROOT_SCOPE_ID)))?;
         for v in &m.arguments {
-            self.symbols.add_variable(m.block.id, v)?;
+            self.symbols.add_variable(&m.block.scope, v)?;
         }
-        self.process_block(&m.block, Some(consts::ROOT_BLOCK_ID))?;
+        self.process_block(&m.block, Some(Scope::new(consts::ROOT_SCOPE_ID)))?;
         Ok(())
     }
 
-    fn process_block(&mut self, b: &Block, parent: Option<usize>) -> Result<(), Error> {
-        self.symbols.add_table_if_nonexist(b.id, parent);
+    fn process_block(&mut self, b: &Block, parent: Option<Scope>) -> Result<(), Error> {
+        self.symbols.add_table_if_nonexist(b.scope, parent);
         for v in &b.fields {
-            self.symbols.add_variable(b.id, v)?;
+            self.symbols.add_variable(&b.scope, v)?;
         }
         for s in &b.statements {
-            self.process_stmt(s, b.id)?;
+            self.process_stmt(s, b.scope)?;
         }
         Ok(())
     }
 
-    fn process_stmt(&mut self, s: &Statement, block_id: usize) -> Result<(), Error> {
+    fn process_stmt(&mut self, s: &Statement, scope: Scope) -> Result<(), Error> {
         let s_ = &s.stmt;
         match s_ {
             Stmt_::If(i) => {
-                self.process_block(&i.if_block, Some(block_id))?;
+                self.process_block(&i.if_block, Some(scope))?;
                 if let Some(else_block) = &i.else_block {
-                    self.process_block(else_block, Some(block_id))?;
+                    self.process_block(else_block, Some(scope))?;
                 }
             }
             Stmt_::While(w) => {
-                self.process_block(&w.block, Some(block_id))?;
+                self.process_block(&w.block, Some(scope))?;
             }
             _ => (),
         }
@@ -236,8 +237,8 @@ impl SymbolTableBuilder {
 pub struct SemanticChecker<'p> {
     symbols: &'p ProgramSymbols,
     current_method: RefCell<Option<String>>,
-    current_block: RefCell<usize>,
-    current_loop: RefCell<Option<usize>>,
+    current_block: RefCell<Scope>,
+    current_loop: RefCell<Option<Scope>>,
     errors: RefCell<Vec<Error>>,
 }
 
@@ -246,7 +247,7 @@ impl<'p> SemanticChecker<'p> {
         SemanticChecker {
             symbols,
             current_method: RefCell::new(None),
-            current_block: RefCell::new(consts::ROOT_BLOCK_ID),
+            current_block: RefCell::new(Scope::new(consts::ROOT_SCOPE_ID)),
             current_loop: RefCell::new(None),
             errors: RefCell::new(Vec::new()),
         }
@@ -284,7 +285,7 @@ impl<'p> SemanticChecker<'p> {
 
     fn check_block(&self, b: &mut Block) {
         let previous_block = *self.current_block.borrow();
-        *self.current_block.borrow_mut() = b.id;
+        *self.current_block.borrow_mut() = b.scope;
         for s in &mut b.statements {
             self.check_statement(s);
         }
@@ -376,7 +377,7 @@ impl<'p> SemanticChecker<'p> {
 
     fn check_loop_block(&self, b: &mut Block) {
         let save_loop = *self.current_loop.borrow();
-        *self.current_loop.borrow_mut() = Some(b.id);
+        *self.current_loop.borrow_mut() = Some(b.scope);
         self.check_block(b);
         *self.current_loop.borrow_mut() = save_loop;
     }
@@ -538,7 +539,7 @@ impl<'p> SemanticChecker<'p> {
         }
     }
 
-    fn current_block(&self) -> usize {
+    fn current_block(&self) -> Scope {
         *self.current_block.borrow()
     }
     fn err(&self, err: Error) {
@@ -547,7 +548,7 @@ impl<'p> SemanticChecker<'p> {
     fn find_var_decl(&self, id: &ID) -> Option<&FieldDecl> {
         let arr_decl = self
             .symbols
-            .find_var_decl(self.current_block(), id.id.as_str());
+            .find_var_decl(&self.current_block(), id.id.as_str());
         if arr_decl.is_none() {
             self.err(err_span!(
                 id.span,

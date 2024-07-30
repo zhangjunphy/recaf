@@ -9,7 +9,7 @@ pub struct ParserState {
 impl ParserState {
     pub fn new() -> Self {
         ParserState {
-            block_count: RefCell::new(crate::consts::ROOT_BLOCK_ID + 1),
+            block_count: RefCell::new(crate::consts::ROOT_SCOPE_ID + 1),
         }
     }
 
@@ -17,7 +17,7 @@ impl ParserState {
         let block_id = *self.block_count.borrow();
         *self.block_count.borrow_mut() += 1;
         Block {
-            id: block_id,
+            scope: Scope { id: block_id },
             fields,
             statements: stmts,
             span: Some(span),

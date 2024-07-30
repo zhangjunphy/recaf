@@ -2,6 +2,7 @@ use crate::ast;
 use crate::source_pos::SrcSpan;
 use std::rc::Rc;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Locality {
     Global,
     Local,
@@ -17,7 +18,7 @@ pub struct Var {
 }
 
 pub enum Val {
-    Var(Var),
+    Var(Rc<Var>),
     Imm(ast::Literal),
 }
 
@@ -71,24 +72,24 @@ pub enum Branch {
     },
 }
 
-pub enum Statements {
+pub enum Statement {
     Assign {
-        dst: Var,
+        dst: Rc<Var>,
         src: Val,
     },
     Call {
-        dst: Var,
+        dst: Option<Rc<Var>>,
         method: String,
         arguments: Vec<Val>,
     },
     Return(Option<Val>),
     Alloca {
-        dst: Var,
+        dst: Rc<Var>,
         tpe: ast::Type,
         size: Option<usize>,
     },
     Load {
-        dst: Var,
+        dst: Rc<Var>,
         ptr: Val,
     },
     Store {
@@ -96,35 +97,35 @@ pub enum Statements {
         src: Val,
     },
     Arith {
-        dst: Var,
+        dst: Rc<Var>,
         op: ArithOp,
         l: Val,
         r: Val,
     },
     Rel {
-        dst: Var,
+        dst: Rc<Var>,
         op: RelOp,
         l: Val,
         r: Val,
     },
     Cond {
-        dst: Var,
+        dst: Rc<Var>,
         op: CondOp,
         l: Val,
         r: Val,
     },
     Eq {
-        dst: Var,
+        dst: Rc<Var>,
         op: EqOp,
         l: Val,
         r: Val,
     },
     NNeg {
-        dst: Var,
+        dst: Rc<Var>,
         val: Val,
     },
     LNeg {
-        dst: Var,
+        dst: Rc<Var>,
         val: Val,
     },
     Br(Branch),
@@ -133,13 +134,20 @@ pub enum Statements {
 pub struct BasicBlock {
     pub label: Label,
     pub args: Vec<Rc<Var>>,
-    pub statements: Vec<Statements>,
+    pub statements: Vec<Statement>,
     pub br: Option<Branch>,
+    pub ast_scope: ast::Scope,
+}
+
+impl BasicBlock {
+    pub fn push_stmt(&mut self, stmt: Statement) {
+        self.statements.push(stmt)
+    }
 }
 
 pub struct Function {
     pub name: String,
-    pub args: Vec<Var>,
+    pub args: Vec<Rc<Var>>,
     pub tpe: ast::Type,
     pub body: Vec<BasicBlock>,
 }

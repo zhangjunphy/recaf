@@ -2,6 +2,17 @@ use crate::source_pos::SrcSpan;
 use std::fmt;
 use std::io;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Scope {
+    pub id: usize,
+}
+
+impl Scope {
+    pub fn new(id: usize) -> Scope {
+        Scope { id }
+    }
+}
+
 #[derive(Debug)]
 pub struct Program {
     pub imports: Vec<ImportDecl>,
@@ -34,7 +45,7 @@ pub struct MethodDecl {
 
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub id: usize,
+    pub scope: Scope,
     pub fields: Vec<FieldDecl>,
     pub statements: Vec<Statement>,
     pub span: Option<SrcSpan>,
@@ -147,6 +158,19 @@ pub enum Type {
     Char,
     Ptr(Box<Type>),
     Array(Box<Type>, usize),
+}
+
+impl Type {
+    pub fn size(&self) -> i64 {
+        match self {
+            Type::Void => 0,
+            Type::Int => 8,
+            Type::Bool => 1,
+            Type::Char => 1,
+            Type::Ptr(_) => 8,
+            Type::Array(tpe, n) => tpe.size() * (*n as i64),
+        }
+    }
 }
 
 pub fn str_type(s: &String) -> Type {
@@ -346,7 +370,7 @@ where
     fn visit_block(&mut self, b: &Block) -> io::Result<usize> {
         self.indent();
         let mut size = 0;
-        size += self.indented_write(format!("[block_id: {}]", b.id).as_str())?;
+        size += self.indented_write(format!("[block_id: {}]", b.scope.id).as_str())?;
         for fld in &b.fields {
             size += self.indented_write(format!("{}", fld).as_str())?;
         }
@@ -449,4 +473,3 @@ where
         self.depth -= 1
     }
 }
-
