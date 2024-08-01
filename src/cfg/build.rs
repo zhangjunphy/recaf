@@ -6,23 +6,11 @@ use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-pub struct CFG {
-    pub name: String,
-    pub nodes: HashMap<usize, Rc<ir::BasicBlock>>,
-    pub edges: HashMap<usize, Vec<(usize, ir::Branch)>>,
-    pub redges: HashMap<usize, Vec<usize>>,
-}
-
-pub struct Program {
-    pub imports: Vec<String>,
-    pub globals: Vec<Rc<ir::Var>>,
-    pub cfgs: HashMap<String, CFG>,
-}
+use crate::cfg::def::{CFG, Program};
 
 pub struct VarMap {
-    var_to_ast_scope: HashMap<usize, usize>,
-    ast_symbol_to_var: HashMap<(usize, String), usize>,
+    var_to_ast_scope: HashMap<usize, ast::Scope>,
+    ast_symbol_to_var: HashMap<(ast::Scope, String), usize>,
     vars: Vec<Rc<ir::Var>>,
     next_var_id: usize,
 }
@@ -37,13 +25,13 @@ impl VarMap {
         }
     }
 
-    fn lookup_var(&self, ast_scope: usize, symbol: &str) -> Option<&Rc<ir::Var>> {
+    fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&Rc<ir::Var>> {
         self.ast_symbol_to_var
             .get(&(ast_scope, symbol.to_string()))
             .and_then(|idx| self.vars.get(*idx))
     }
 
-    fn lookup_decl_and_scope(&self, v: &ir::Var) -> Option<&usize> {
+    fn lookup_ast_scope(&self, v: &ir::Var) -> Option<&ast::Scope> {
         self.var_to_ast_scope.get(&v.id)
     }
 
@@ -84,9 +72,12 @@ impl VarMap {
     ) -> Rc<ir::Var> {
         let id = self.new_var_id();
         if let Some(d) = &decl {
-            self.var_to_ast_scope.insert(id, consts::ROOT_SCOPE_ID);
-            self.ast_symbol_to_var
-                .insert((consts::ROOT_SCOPE_ID, d.id.id.clone()), id);
+            self.var_to_ast_scope
+                .insert(id, ast::Scope::from(consts::ROOT_SCOPE_ID));
+            self.ast_symbol_to_var.insert(
+                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.id.clone()),
+                id,
+            );
         }
         self.vars.push(Rc::new(ir::Var {
             id,
@@ -100,10 +91,10 @@ impl VarMap {
 }
 
 pub struct BuildState {
-    next_block_id: usize,
+    next_bb_id: usize,
     current_ast_scope: ast::Scope,
     var_map: VarMap,
-    current_cfg: RefCell<Option<CFG>>,
+    current_cfg: RefCell<Option<CFG<ir::BasicBlock>>>,
     current_block: RefCell<Option<ir::BasicBlock>>,
 }
 
@@ -118,7 +109,7 @@ impl<'s> CFGBuild<'s> {
         CFGBuild {
             symbols,
             state: RefCell::new(BuildState {
-                next_block_id: 1, // reserve block 0 for global variables
+                next_bb_id: 1, // reserve block 0 for global variables
                 current_ast_scope: ast::Scope::new(consts::ROOT_SCOPE_ID),
                 var_map: VarMap::new(),
                 current_cfg: RefCell::new(None),
@@ -132,9 +123,9 @@ impl<'s> CFGBuild<'s> {
         }
     }
 
-    fn new_block_id(&mut self) -> usize {
-        let id = self.state.borrow().next_block_id;
-        self.state.borrow_mut().next_block_id += 1;
+    fn new_block_id(&self) -> usize {
+        let id = self.state.borrow().next_bb_id;
+        self.state.borrow_mut().next_bb_id += 1;
         id
     }
 
@@ -171,37 +162,54 @@ impl<'s> CFGBuild<'s> {
             .borrow_mut()
             .current_block
             .borrow_mut()
-            .as_ref()
+            .as_mut()
             .unwrap()
             .push_stmt(stmt)
     }
 
     fn pop_current_block(&self) -> Rc<ir::BasicBlock> {
-        let dummy = RefCell::new(None);
-        self.state.borrow().current_block.swap(&dummy);
-        let block = Rc::new(dummy.into_inner().unwrap());
+        let bb = self.state.borrow().current_block.take();
+        let block = Rc::new(bb.unwrap());
         self.state
             .borrow()
             .current_cfg
             .borrow_mut()
-            .as_ref()
+            .as_mut()
             .unwrap()
             .nodes
-            .insert(block.label.id, block.clone());
+            .insert(block.label, block.clone());
         block
     }
 
-    fn push_current_block(&self, id: usize, args: Vec<Rc<ir::Var>>) {
+    fn add_bb_edge(&self, src: ir::Label, dst: ir::Label, br: ir::Branch) {
+        let state = self.state.borrow();
+        let mut cfg = state.current_cfg.borrow_mut();
+        cfg.as_mut()
+            .unwrap()
+            .edges
+            .entry(src)
+            .or_insert(Vec::new())
+            .push((dst, br));
+        cfg.as_mut()
+            .unwrap()
+            .redges
+            .entry(dst)
+            .or_insert(Vec::new())
+            .push(src);
+    }
+
+    fn push_current_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
+        let id = self.new_block_id();
         assert!(self.state.borrow().current_block.borrow().is_none());
         let ast_scope = self.state.borrow().current_ast_scope;
         let block = RefCell::new(Some(ir::BasicBlock {
             label: ir::Label { id },
             args,
             statements: Vec::new(),
-            br: None,
             ast_scope,
         }));
         self.state.borrow().current_block.swap(&block);
+        ir::Label { id }
     }
 
     fn find_decl(&self, id: &str) -> Option<&ast::FieldDecl> {
@@ -235,9 +243,13 @@ impl<'s> CFGBuild<'s> {
         self.visit_block(&m.block, &m.arguments);
     }
 
-    fn visit_block(&mut self, b: &ast::Block, method_args: &Vec<ast::FieldDecl>) -> (usize, usize) {
+    fn visit_block(
+        &mut self,
+        b: &ast::Block,
+        method_args: &Vec<ast::FieldDecl>,
+    ) -> (ir::Label, ir::Label) {
         let parent_scope = self.state.borrow().current_ast_scope;
-        self.state.borrow_mut().current_ast_scope = b.id;
+        self.state.borrow_mut().current_ast_scope = b.scope;
 
         // First build an entry block with method arguments.
         let mut args = Vec::new();
@@ -245,8 +257,7 @@ impl<'s> CFGBuild<'s> {
             let var = self.new_local(arg);
             args.push(var.clone());
         }
-        let entry = self.new_block_id();
-        self.push_current_block(entry, args);
+        let entry = self.push_current_block(args);
 
         // Handle local variables
         for fld in &b.fields {
@@ -258,7 +269,7 @@ impl<'s> CFGBuild<'s> {
             self.visit_statement(s);
         }
 
-        let exit = self.pop_current_block().label.id;
+        let exit = self.pop_current_block().label;
 
         self.state.borrow_mut().current_ast_scope = parent_scope;
 
@@ -281,19 +292,76 @@ impl<'s> CFGBuild<'s> {
             }
             ast::Stmt_::If(i) => {
                 let pred_var = self.visit_expr(&i.pred);
-                let prev_block = self.pop_current_block();
+                let head = self.pop_current_block().label;
                 let (if_entry, if_exit) = self.visit_block(&i.if_block, &Vec::new());
                 if let Some(else_block) = &i.else_block {
                     let (else_entry, else_exit) = self.visit_block(else_block, &Vec::new());
+                    let landing_pad = self.push_current_block(Vec::new());
+                    self.add_bb_edge(
+                        head,
+                        if_entry,
+                        ir::Branch::Con {
+                            pred: pred_var.clone(),
+                            label_true: if_entry,
+                            label_false: else_entry,
+                        },
+                    );
+                    self.add_bb_edge(
+                        head,
+                        else_entry,
+                        ir::Branch::Con {
+                            pred: pred_var,
+                            label_true: if_entry,
+                            label_false: else_entry,
+                        },
+                    );
+                    self.add_bb_edge(
+                        if_exit,
+                        landing_pad,
+                        ir::Branch::UnCon { label: landing_pad },
+                    );
+                    self.add_bb_edge(
+                        else_exit,
+                        landing_pad,
+                        ir::Branch::UnCon { label: landing_pad },
+                    );
+                } else {
+                    let landing_pad = self.push_current_block(Vec::new());
+                    self.add_bb_edge(
+                        head,
+                        if_entry,
+                        ir::Branch::Con {
+                            pred: pred_var.clone(),
+                            label_true: if_entry,
+                            label_false: landing_pad,
+                        },
+                    );
+                    self.add_bb_edge(
+                        head,
+                        landing_pad,
+                        ir::Branch::Con {
+                            pred: pred_var,
+                            label_true: if_entry,
+                            label_false: landing_pad,
+                        },
+                    );
+                    self.add_bb_edge(
+                        if_exit,
+                        landing_pad,
+                        ir::Branch::UnCon { label: landing_pad },
+                    );
                 }
             }
+            ast::Stmt_::For(f) => {}
             _ => (),
         }
     }
 
     fn visit_assign(&mut self, asn: &ast::Assign) {}
 
-    fn visit_expr(&mut self, expr: &ast::Expr) -> ir::Val {}
+    fn visit_expr(&mut self, expr: &ast::Expr) -> ir::Val {
+        ir::Val::Imm(ast::Literal::Int(0))
+    }
 
     fn array_element_tpe(t: &ast::Type) -> Option<&ast::Type> {
         match t {

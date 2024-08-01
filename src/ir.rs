@@ -17,6 +17,7 @@ pub struct Var {
     pub locality: Locality,
 }
 
+#[derive(Clone)]
 pub enum Val {
     Var(Rc<Var>),
     Imm(ast::Literal),
@@ -51,12 +52,19 @@ pub enum EqOp {
     NE,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Label {
     pub id: usize,
 }
 
 impl Label {
     pub fn new(id: usize) -> Self {
+        Label { id }
+    }
+}
+
+impl From<usize> for Label {
+    fn from(id: usize) -> Self {
         Label { id }
     }
 }
@@ -133,10 +141,9 @@ pub enum Statement {
 
 pub struct BasicBlock {
     pub label: Label,
+    pub ast_scope: ast::Scope,
     pub args: Vec<Rc<Var>>,
     pub statements: Vec<Statement>,
-    pub br: Option<Branch>,
-    pub ast_scope: ast::Scope,
 }
 
 impl BasicBlock {

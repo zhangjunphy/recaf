@@ -2,13 +2,19 @@ use crate::source_pos::SrcSpan;
 use std::fmt;
 use std::io;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Scope {
     pub id: usize,
 }
 
 impl Scope {
     pub fn new(id: usize) -> Scope {
+        Scope { id }
+    }
+}
+
+impl From<usize> for Scope {
+    fn from(id: usize) -> Self {
         Scope { id }
     }
 }
