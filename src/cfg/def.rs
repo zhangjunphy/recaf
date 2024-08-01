@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use crate::ir;
 
-pub struct CFG<TNode> {
+pub struct CFG<Tn, Te> {
     pub name: String,
-    pub nodes: HashMap<ir::Label, Rc<TNode>>,
-    pub edges: HashMap<ir::Label, Vec<(ir::Label, ir::Branch)>>,
+    pub nodes: HashMap<ir::Label, Rc<Tn>>,
+    pub edges: HashMap<ir::Label, Vec<(ir::Label, Te)>>,
     pub redges: HashMap<ir::Label, Vec<ir::Label>>,
 }
 

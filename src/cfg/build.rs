@@ -94,7 +94,7 @@ pub struct BuildState {
     next_bb_id: usize,
     current_ast_scope: ast::Scope,
     var_map: VarMap,
-    current_cfg: RefCell<Option<CFG<ir::BasicBlock>>>,
+    current_cfg: RefCell<Option<CFG<ir::BasicBlock, ir::Branch>>>,
     current_block: RefCell<Option<ir::BasicBlock>>,
 }
 
