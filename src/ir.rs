@@ -1,5 +1,6 @@
 use crate::ast;
 use crate::source_pos::SrcSpan;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -16,6 +17,23 @@ pub struct Var {
     pub span: Option<SrcSpan>,
     pub locality: Locality,
 }
+
+impl Hash for Var {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Var {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Var {}
 
 #[derive(Clone)]
 pub enum Val {

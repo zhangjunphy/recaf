@@ -177,6 +177,13 @@ impl Type {
             Type::Array(tpe, n) => tpe.size() * (*n as i64),
         }
     }
+
+    pub fn array_len(&self) -> i64 {
+        match self {
+            Type::Array(tpe, n) => n,
+            _ => panic!(),
+        }
+    }
 }
 
 pub fn str_type(s: &String) -> Type {
@@ -207,6 +214,22 @@ pub enum BinOp {
 
     And,
     Or,
+}
+
+impl BinOp {
+    pub fn ty(&self) -> Type {
+        match self {
+            Self::Mul | Self::Div | Self::Add | Self::Sub | Self::Mod => Type::Int,
+            Self::LT
+            | Self::GT
+            | Self::LE
+            | Self::GE
+            | Self::EQ
+            | Self::NE
+            | Self::And
+            | Self::Or => Type::Bool,
+        }
+    }
 }
 
 impl fmt::Display for Literal {

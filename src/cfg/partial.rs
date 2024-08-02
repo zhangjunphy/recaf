@@ -3,41 +3,129 @@ use crate::cfg::def::CFG;
 use crate::consts;
 use crate::ir;
 use crate::semantic;
+use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub struct BasicBlock {
-    pub label: ir::Label,
-    pub ast_scope: ast::Scope,
-    pub args: Vec<Rc<ast::FieldDecl>>,
-    pub statements: Vec<ast::Statement>,
-}
+// Process AST into a cfg with three-address code.
+// It is not a SSA yet. And basicblock parameters introduced by control flows are left empty.
 
 pub enum Edge {
     Continue,
-    JumpTrue(ast::Expr),
+    JumpTrue(ir::Val),
     JumpFalse,
 }
 
-impl BasicBlock {
-    fn push_stmt(&mut self, stmt: ast::Statement) {
-        self.statements.push(stmt);
-    }
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Label {
+    Just(ir::Label),
+    LoopPred,
+    LoopExit,
+    MethodEntry,
+    MethodExit,
 }
+
+type PartialCFG = CFG<Label, ir::BasicBlock, Edge>;
 
 pub struct Program {
     pub imports: Vec<String>,
-    pub globals: Vec<Rc<ast::FieldDecl>>,
-    pub cfgs: HashMap<String, CFG<BasicBlock, Edge>>,
+    pub globals: Vec<Rc<ir::Var>>,
+    pub cfgs: HashMap<String, PartialCFG>,
+}
+
+pub struct VarCache {
+    pub var_to_symbol: HashMap<Rc<ir::Var>, (ast::Scope, String)>,
+    pub symbol_to_var: HashMap<(ast::Scope, String), Rc<ir::Var>>,
+    pub vars: Vec<Rc<ir::Var>>,
+
+    pub next_var_id: usize,
+}
+
+impl VarCache {
+    fn new() -> Self {
+        VarCache {
+            var_to_symbol: HashMap::new(),
+            symbol_to_var: HashMap::new(),
+            vars: Vec::new(),
+            next_var_id: 0,
+        }
+    }
+
+    fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&Rc<ir::Var>> {
+        self.symbol_to_var.get(&(ast_scope, symbol.to_string()))
+    }
+
+    fn lookup_ast_scope(&self, v: Rc<ir::Var>) -> Option<&ast::Scope> {
+        self.var_to_symbol.get(&v).map(|e| &e.0)
+    }
+
+    fn new_var_id(&mut self) -> usize {
+        let id = self.next_var_id;
+        self.next_var_id += 1;
+        id
+    }
+
+    fn new_local(
+        &mut self,
+        ast_scope: ast::Scope,
+        tpe: ast::Type,
+        decl: Option<ast::FieldDecl>,
+        span: Option<SrcSpan>,
+    ) -> Rc<ir::Var> {
+        let id = self.new_var_id();
+        let var = Rc::new(ir::Var {
+            id,
+            tpe,
+            decl: decl.clone(),
+            span,
+            locality: ir::Locality::Local,
+        });
+        if let Some(d) = &decl {
+            self.var_to_symbol
+                .insert(var.clone(), (ast_scope, d.id.id.clone()));
+            self.symbol_to_var
+                .insert((ast_scope, d.id.id.clone()), var.clone());
+        }
+        self.vars.push(var.clone());
+        var
+    }
+
+    fn new_global(
+        &mut self,
+        tpe: ast::Type,
+        decl: Option<ast::FieldDecl>,
+        span: Option<SrcSpan>,
+    ) -> Rc<ir::Var> {
+        let id = self.new_var_id();
+        let var = Rc::new(ir::Var {
+            id,
+            tpe,
+            decl: decl.clone(),
+            span,
+            locality: ir::Locality::Global,
+        });
+        if let Some(d) = &decl {
+            self.var_to_symbol.insert(
+                var.clone(),
+                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.id.clone()),
+            );
+            self.symbol_to_var.insert(
+                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.id.clone()),
+                var.clone(),
+            );
+        }
+        self.vars.push(var.clone());
+        var
+    }
 }
 
 pub struct BuildState {
     next_bb_id: usize,
     current_ast_scope: ast::Scope,
-    current_cfg: RefCell<Option<CFG<BasicBlock, Edge>>>,
-    current_block: RefCell<Option<BasicBlock>>,
-    current_loop: Option<(Label, Label)>, // pred and landing_pad block
+    current_cfg: RefCell<Option<PartialCFG>>,
+    current_block: RefCell<Option<ir::BasicBlock>>,
+    var_cache: VarCache,
 }
 
 pub struct CFGBuild<'s> {
@@ -55,6 +143,7 @@ impl<'s> CFGBuild<'s> {
                 current_ast_scope: ast::Scope::new(consts::ROOT_SCOPE_ID),
                 current_cfg: RefCell::new(None),
                 current_block: RefCell::new(None),
+                var_cache: VarCache::new(),
             }),
             program: Program {
                 imports: Vec::new(),
@@ -70,33 +159,61 @@ impl<'s> CFGBuild<'s> {
         id
     }
 
-    fn push_stmt_to_block(&self, l: &ir::Label, stmt: ast::Statement) {
-        self.state
-            .borrow()
-            .current_cfg
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .nodes
-            .get(&l)
-            .unwrap()
-            .push_stmt(stmt);
-    }
-    fn push_stmt(&self, stmt: ast::Statement) {
-        self.state
-            .borrow_mut()
-            .current_block
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .push_stmt(stmt)
+    fn get_scope(&self) -> ast::Scope {
+        self.state.borrow().current_ast_scope
     }
 
-    fn new_block(&self, args: Vec<Rc<ast::FieldDecl>>) -> ir::Label {
+    fn query_cache<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce(&VarCache) -> T,
+    {
+        let state = self.state.borrow();
+        f(&state.var_cache)
+    }
+
+    fn mut_cache<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce(&mut VarCache) -> T,
+    {
+        let mut state = self.state.borrow_mut();
+        f(&mut state.var_cache)
+    }
+
+    fn mut_cfg<F>(&self, f: F)
+    where
+        F: FnOnce(&mut PartialCFG),
+    {
+        let state = self.state.borrow();
+        let mut cfg = state.current_cfg.borrow_mut();
+        f(cfg.as_mut().unwrap());
+    }
+
+    fn mut_block<F>(&self, f: F)
+    where
+        F: FnOnce(&mut ir::BasicBlock),
+    {
+        let state = self.state.borrow();
+        let mut block = state.current_block.borrow_mut();
+        f(block.as_mut().unwrap());
+    }
+
+    fn push_stmt_to_block(&self, l: &ir::Label, stmt: ir::Statement) {
+        self.mut_cfg(|cfg| {
+            let node = cfg.nodes.get_mut(&(Label::Just(*l))).unwrap();
+            node.borrow_mut().push_stmt(stmt);
+        });
+    }
+    fn push_stmt(&self, stmt: ir::Statement) {
+        self.mut_block(|b| {
+            b.push_stmt(stmt);
+        });
+    }
+
+    fn new_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
         let id = self.new_block_id();
         assert!(self.state.borrow().current_block.borrow().is_none());
         let ast_scope = self.state.borrow().current_ast_scope;
-        let block = RefCell::new(Some(BasicBlock {
+        let block = RefCell::new(Some(ir::BasicBlock {
             label: ir::Label { id },
             args,
             statements: Vec::new(),
@@ -106,35 +223,84 @@ impl<'s> CFGBuild<'s> {
         ir::Label { id }
     }
 
-    fn pop_current_block(&self) -> Rc<BasicBlock> {
+    fn pop_current_block(&self) -> Rc<RefCell<ir::BasicBlock>> {
         let bb = self.state.borrow().current_block.take();
-        let block = Rc::new(bb.unwrap());
-        self.state
-            .borrow()
-            .current_cfg
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .nodes
-            .insert(block.label, block.clone());
+        let block = Rc::new(RefCell::new(bb.unwrap()));
+        self.mut_cfg(|cfg| {
+            cfg.nodes
+                .insert(Label::Just(block.borrow().label), block.clone());
+        });
         block
     }
 
     fn add_bb_edge(&self, src: ir::Label, dst: ir::Label, edge: Edge) {
-        let state = self.state.borrow();
-        let mut cfg = state.current_cfg.borrow_mut();
-        cfg.as_mut()
-            .unwrap()
-            .edges
-            .entry(src)
-            .or_insert(Vec::new())
-            .push((dst, edge));
-        cfg.as_mut()
-            .unwrap()
-            .redges
-            .entry(dst)
-            .or_insert(Vec::new())
-            .push(src);
+        let src = Label::Just(src);
+        let dst = Label::Just(dst);
+        self.mut_cfg(|cfg| {
+            cfg.edges.entry(src).or_insert(Vec::new()).push((dst, edge));
+            cfg.redges.entry(dst).or_insert(Vec::new()).push(src);
+        });
+    }
+
+    fn add_dummy_edge(&self, src: Label, dst: Label, edge: Edge) {
+        self.mut_cfg(|cfg| {
+            cfg.edges.entry(src).or_insert(Vec::new()).push((dst, edge));
+            cfg.redges.entry(dst).or_insert(Vec::new()).push(src);
+        });
+    }
+
+    // Replace Label::LoopPred and Label::LoopExit with actual labels.
+    fn tie_dummy_loop_edges(&self, pred: ir::Label, exit: ir::Label) {
+        self.replace_cfg_label(Label::LoopPred, Label::Just(pred));
+        self.replace_cfg_label(Label::LoopExit, Label::Just(exit));
+    }
+
+    fn tie_dummy_method_exit(&self, exit: ir::Label) {
+        self.replace_cfg_label(Label::MethodExit, Label::Just(exit));
+    }
+
+    fn replace_cfg_label(&self, replace: Label, with: Label) {
+        self.mut_cfg(|cfg| {
+            // Replace keys in edges and redges
+            if let Some(mut out_edges) = cfg.edges.remove(&replace) {
+                let entry = cfg.edges.entry(with).or_insert(Vec::new());
+                entry.append(&mut out_edges);
+            }
+            if let Some(mut in_edges) = cfg.redges.remove(&replace) {
+                let entry = cfg.redges.entry(with).or_insert(Vec::new());
+                entry.append(&mut in_edges);
+            }
+            // Replace values in edges and redges
+            cfg.edges.values_mut().for_each(|edge| {
+                edge.into_iter()
+                    .filter(|e| e.0 == replace)
+                    .for_each(|e| e.0 = with);
+            });
+            cfg.redges.values_mut().for_each(|edge| {
+                edge.into_iter()
+                    .filter(|e| **e == replace)
+                    .for_each(|e| *e = with);
+            });
+        });
+    }
+
+    fn new_local(&self, fld: &ast::FieldDecl) -> Rc<ir::Var> {
+        let scope = self.state.borrow().current_ast_scope;
+        self.mut_cache(|cache| cache.new_local(scope, fld.tpe.clone(), Some(fld.clone()), fld.span))
+    }
+
+    fn new_global(&self, fld: &ast::FieldDecl) -> Rc<ir::Var> {
+        self.mut_cache(|cache| cache.new_global(fld.tpe.clone(), Some(fld.clone()), fld.span))
+    }
+
+    fn new_temp(&self, tpe: &ast::Type) -> Rc<ir::Var> {
+        let scope = self.state.borrow().current_ast_scope;
+        self.mut_cache(|cache| cache.new_local(scope, tpe.clone(), None, None))
+    }
+
+    fn lookup_id(&self, id: &ast::ID) -> Rc<ir::Var> {
+        let scope = self.state.borrow().current_ast_scope;
+        self.query_cache(|cache| cache.lookup_var(scope, id.id.as_str()).unwrap().clone())
     }
 
     fn find_decl(&self, id: &str) -> Option<&ast::FieldDecl> {
@@ -150,17 +316,35 @@ impl<'s> CFGBuild<'s> {
 
         // Handle globals
         for fld in &p.fields {
-            self.program.globals.push(Rc::new(fld.clone()));
+            self.program.globals.push(self.new_global(fld));
         }
 
         // Build cfg for each mehtod
         for m in &p.methods {
-            self.visit_method(m);
+            let cfg = self.visit_method(m);
+            self.program.cfgs.insert(m.id.id.clone(), cfg);
         }
     }
 
-    fn visit_method(&mut self, m: &ast::MethodDecl) {
-        self.visit_block(&m.block, &m.arguments);
+    fn visit_method(&mut self, m: &ast::MethodDecl) -> PartialCFG {
+        self.state.borrow().current_cfg.replace(Some(CFG {
+            name: m.id.id.clone(),
+            entry: Label::MethodEntry,
+            exit: Label::MethodExit,
+            nodes: HashMap::new(),
+            edges: HashMap::new(),
+            redges: HashMap::new(),
+        }));
+        let (entry, exit) = self.visit_block(&m.block, &m.arguments);
+        let landing_pad = self.new_block(Vec::new());
+
+        self.add_bb_edge(exit, landing_pad, Edge::Continue);
+        self.tie_dummy_method_exit(landing_pad);
+        self.mut_cfg(|cfg| {
+            cfg.entry = Label::Just(entry);
+            cfg.exit = Label::Just(landing_pad);
+        });
+        self.state.borrow().current_cfg.take().unwrap()
     }
 
     fn visit_block(
@@ -172,10 +356,7 @@ impl<'s> CFGBuild<'s> {
         self.state.borrow_mut().current_ast_scope = b.scope;
 
         // First build an entry block with method arguments.
-        let mut args = Vec::new();
-        method_args.into_iter().for_each(|arg| {
-            args.push(Rc::new(arg.clone()));
-        });
+        let args = method_args.into_iter().map(|a| self.new_local(a)).collect();
         let entry = self.new_block(args);
 
         // Handle statements
@@ -183,7 +364,7 @@ impl<'s> CFGBuild<'s> {
             self.visit_statement(s);
         }
 
-        let exit = self.pop_current_block().label;
+        let exit = self.pop_current_block().borrow().label;
 
         self.state.borrow_mut().current_ast_scope = parent_scope;
 
@@ -192,63 +373,226 @@ impl<'s> CFGBuild<'s> {
 
     fn visit_statement(&mut self, s: &ast::Statement) {
         match &s.stmt {
-            ast::Stmt_::Assign(_) | ast::Stmt_::MethodCall(_) => {
-                self.push_stmt(s.clone());
+            ast::Stmt_::Assign(a) => {
+                let val = self.visit_expr(&a.expr);
+                self.write_to_location(&a.location, val);
+            }
+            ast::Stmt_::MethodCall(c) => {
+                let args = c.arguments.iter().map(|e| self.visit_expr(&e)).collect();
+                self.push_stmt(ir::Statement::Call {
+                    dst: None,
+                    method: c.name.id.clone(),
+                    arguments: args,
+                });
             }
             ast::Stmt_::If(i) => {
-                let head = self.pop_current_block().label;
+                let pred_val = self.visit_expr(&i.pred);
+                let head = self.pop_current_block().borrow().label;
                 let (if_entry, if_exit) = self.visit_block(&i.if_block, &Vec::new());
                 if let Some(else_block) = &i.else_block {
                     let (else_entry, else_exit) = self.visit_block(else_block, &Vec::new());
                     let landing_pad = self.new_block(Vec::new());
-                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(i.pred.clone()));
+                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val));
                     self.add_bb_edge(head, else_entry, Edge::JumpFalse);
                     self.add_bb_edge(if_exit, landing_pad, Edge::Continue);
                     self.add_bb_edge(else_exit, landing_pad, Edge::Continue);
                 } else {
                     let landing_pad = self.new_block(Vec::new());
-                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(i.pred.clone()));
+                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val));
                     self.add_bb_edge(if_exit, landing_pad, Edge::Continue);
                     self.add_bb_edge(head, landing_pad, Edge::Continue);
                 }
             }
             ast::Stmt_::For(f) => {
-                self.push_stmt((*f.init).clone());
-                let head = self.pop_current_block().label;
+                // Handle the init statement of this for-loop
+                self.visit_statement(f.init.as_ref());
 
-                self.new_block(Vec::new());
-                let pred = self.pop_current_block().label;
+                // Then transform this for-loop into a while-loop
+                let mut stmts = f.block.statements.clone();
+                stmts.push(f.update.as_ref().clone());
+                let mut w = ast::Statement {
+                    stmt: ast::Stmt_::While(ast::While {
+                        pred: f.pred.clone(),
+                        block: ast::Block {
+                            scope: f.block.scope,
+                            fields: f.block.fields.clone(),
+                            statements: stmts,
+                            span: f.block.span,
+                        },
+                    }),
+                    span: s.span,
+                };
 
-                let (body_entry, body_exit) = self.visit_block(&f.block, &Vec::new());
-                self.push_stmt_to_block(&body_exit, (*f.update).clone());
-
-                let landing_pad = self.new_block(Vec::new());
-
-                self.add_bb_edge(head, pred, Edge::Continue);
-                self.add_bb_edge(pred, body_entry, Edge::JumpTrue(f.pred.clone()));
-                self.add_bb_edge(body_exit, pred, Edge::Continue);
-                self.add_bb_edge(pred, landing_pad, Edge::JumpFalse);
+                self.visit_statement(&w);
             }
             ast::Stmt_::While(w) => {
-                let head = self.pop_current_block().label;
+                let head = self.pop_current_block().borrow().label;
 
                 self.new_block(Vec::new());
-                let pred = self.pop_current_block().label;
+                let pred_bb = self.pop_current_block().borrow().label;
+                let pred_val = self.visit_expr(&w.pred);
 
                 let (body_entry, body_exit) = self.visit_block(&w.block, &Vec::new());
 
                 let landing_pad = self.new_block(Vec::new());
 
-                self.add_bb_edge(head, pred, Edge::Continue);
-                self.add_bb_edge(pred, body_entry, Edge::JumpTrue(w.pred.clone()));
-                self.add_bb_edge(body_exit, pred, Edge::Continue);
-                self.add_bb_edge(pred, landing_pad, Edge::JumpFalse);
+                self.add_bb_edge(head, pred_bb, Edge::Continue);
+                self.add_bb_edge(pred_bb, body_entry, Edge::JumpTrue(pred_val));
+                self.add_bb_edge(body_exit, pred_bb, Edge::Continue);
+                self.add_bb_edge(pred_bb, landing_pad, Edge::JumpFalse);
+
+                self.tie_dummy_loop_edges(pred_bb, landing_pad);
             }
-            _ => (),
+            ast::Stmt_::Return(e) => {
+                let val = e.as_ref().map(|e| self.visit_expr(&e));
+                self.push_stmt(ir::Statement::Return(val));
+                let exit = self.pop_current_block().borrow().label;
+                // Create a unreachable block.
+                self.new_block(Vec::new());
+                self.add_dummy_edge(Label::Just(exit), Label::MethodExit, Edge::Continue);
+            }
+            ast::Stmt_::Break => {
+                let exit = self.pop_current_block().borrow().label;
+                self.new_block(Vec::new());
+                self.add_dummy_edge(Label::Just(exit), Label::LoopExit, Edge::Continue);
+            }
+            ast::Stmt_::Continue => {
+                let exit = self.pop_current_block().borrow().label;
+                self.new_block(Vec::new());
+                self.add_dummy_edge(Label::Just(exit), Label::LoopPred, Edge::Continue);
+            }
         }
     }
 
-    fn visit_expr(&mut self, expr: &ast::Expr) -> ir::Val {
-        ir::Val::Imm(ast::Literal::Int(0))
+    fn visit_expr(&self, expr: &ast::Expr) -> ir::Val {
+        match &expr.expr {
+            ast::Expr_::Location(l) => self.read_from_location(l),
+            ast::Expr_::MethodCall(c) => {
+                let args = c.arguments.iter().map(|e| self.visit_expr(&e)).collect();
+                let ty = match &self.symbols.find_method_decl(c.name.id.as_str()).unwrap() {
+                    semantic::MethodOrImport::Method(decl) => Some(decl.tpe),
+                    _ => None,
+                };
+                assert!(ty.is_some());
+                let local = self.new_temp(&ty.unwrap());
+                self.push_stmt(ir::Statement::Call {
+                    dst: Some(local.clone()),
+                    method: c.name.id.clone(),
+                    arguments: args,
+                });
+                ir::Val::Var(local)
+            }
+            ast::Expr_::Literal(l) => ir::Val::Imm(l.clone()),
+            ast::Expr_::Len(id) => {
+                let ty = self
+                    .symbols
+                    .find_var_decl(&self.get_scope(), id.id.as_str())
+                    .unwrap()
+                    .tpe;
+                ir::Val::Imm(ast::Literal::Int(ty.array_len()))
+            }
+            ast::Expr_::BinOp(l, op, r) => {
+                let lval = self.visit_expr(l.as_ref());
+                let rval = self.visit_expr(r.as_ref());
+                let local = self.new_temp(&op.ty());
+                self.push_stmt(ir::Statement::Arith { dst: local, op: op, l: lval, r: rval });
+                ir::Val::Var(local)
+            }
+        }
+    }
+
+    fn array_element_tpe(t: &ast::Type) -> Option<&ast::Type> {
+        match t {
+            ast::Type::Array(t, _) => Some(t.as_ref()),
+            _ => None,
+        }
+    }
+
+    fn ptr_underlying_tpe(t: &ast::Type) -> Option<&ast::Type> {
+        match t {
+            ast::Type::Ptr(t) => Some(t.as_ref()),
+            _ => None,
+        }
+    }
+
+    fn vector_deref(&mut self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::Var> {
+        let var_vector = self.lookup_id(id);
+        let ele_tpe = Self::array_element_tpe(&var_vector.tpe);
+        assert!(ele_tpe.is_some());
+        let ptr_tpe = ast::Type::Ptr(Box::new(ele_tpe.unwrap().clone()));
+
+        let idx_var = self.visit_expr(expr);
+        let offset_var = self.new_temp(&ptr_tpe);
+        self.push_stmt(ir::Statement::Arith {
+            dst: offset_var.clone(),
+            op: ir::ArithOp::Mul,
+            l: ir::Val::Imm(ast::Literal::Int(ele_tpe.unwrap().size())),
+            r: idx_var,
+        });
+
+        let ele_ptr = self.new_temp(&ptr_tpe);
+        self.push_stmt(ir::Statement::Arith {
+            dst: ele_ptr.clone(),
+            op: ir::ArithOp::Add,
+            l: ir::Val::Var(var_vector.clone()),
+            r: ir::Val::Var(offset_var),
+        });
+
+        ele_ptr
+    }
+
+    fn read_from_location(&mut self, loc: &ast::Location) -> ir::Val {
+        match &loc {
+            ast::Location::Scalar(id) => {
+                let var = self.lookup_id(id);
+                match &var.locality {
+                    ir::Locality::Local => return ir::Val::Var(var),
+                    ir::Locality::Global => {
+                        let dst = self.new_temp(&var.tpe);
+                        self.push_stmt(ir::Statement::Load {
+                            dst: dst.clone(),
+                            ptr: ir::Val::Var(var),
+                        });
+                        return ir::Val::Var(dst);
+                    }
+                }
+            }
+            ast::Location::Vector(id, idx_expr) => {
+                let var = self.lookup_id(id);
+                let ele_ptr = self.vector_deref(id, idx_expr);
+                let dst = self.new_temp(Self::array_element_tpe(&var.tpe).unwrap());
+                self.push_stmt(ir::Statement::Load {
+                    dst: dst.clone(),
+                    ptr: ir::Val::Var(ele_ptr),
+                });
+                return ir::Val::Var(dst);
+            }
+        }
+    }
+
+    fn write_to_location(&mut self, loc: &ast::Location, val: ir::Val) {
+        match &loc {
+            ast::Location::Scalar(id) => {
+                let var = self.lookup_id(id);
+                match &var.locality {
+                    ir::Locality::Local => {
+                        self.push_stmt(ir::Statement::Assign { dst: var, src: val });
+                    }
+                    ir::Locality::Global => {
+                        self.push_stmt(ir::Statement::Store {
+                            ptr: ir::Val::Var(var),
+                            src: val,
+                        });
+                    }
+                }
+            }
+            ast::Location::Vector(id, idx) => {
+                let ele_ptr = self.vector_deref(id, idx);
+                self.push_stmt(ir::Statement::Store {
+                    ptr: ir::Val::Var(ele_ptr),
+                    src: val,
+                });
+            }
+        }
     }
 }
