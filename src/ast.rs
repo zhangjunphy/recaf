@@ -36,14 +36,14 @@ pub struct ImportDecl {
 #[derive(Debug, Clone)]
 pub struct FieldDecl {
     pub id: ID,
-    pub tpe: Type,
+    pub ty: Type,
     pub span: Option<SrcSpan>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MethodDecl {
     pub id: ID,
-    pub tpe: Type,
+    pub ty: Type,
     pub arguments: Vec<FieldDecl>,
     pub block: Block,
     pub span: Option<SrcSpan>,
@@ -66,7 +66,7 @@ pub struct Statement {
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Expr {
     pub expr: Expr_,
-    pub tpe: Type,
+    pub ty: Type,
     pub span: Option<SrcSpan>,
 }
 
@@ -176,7 +176,7 @@ impl Type {
             Type::Bool => 1,
             Type::Char => 1,
             Type::Ptr(_) => 8,
-            Type::Array(tpe, n) => tpe.size() * n,
+            Type::Array(ty, n) => ty.size() * n,
         }
     }
 
@@ -277,8 +277,8 @@ impl fmt::Display for Type {
             Type::Int => write!(f, "int"),
             Type::Bool => write!(f, "bool"),
             Type::Char => write!(f, "char"),
-            Type::Ptr(tpe) => write!(f, "ptr {}", *tpe),
-            Type::Array(tpe, size) => write!(f, "{}x{}", size, *tpe),
+            Type::Ptr(ty) => write!(f, "ptr {}", *ty),
+            Type::Array(ty, size) => write!(f, "{}x{}", size, *ty),
         }
     }
 }
@@ -291,7 +291,7 @@ impl fmt::Display for ImportDecl {
 
 impl fmt::Display for FieldDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {};", self.tpe, self.id.id.as_str())
+        write!(f, "{} {};", self.ty, self.id.id.as_str())
     }
 }
 
@@ -397,7 +397,7 @@ where
             .map(|arg| format!("{}", arg))
             .collect();
         size += self.indented_write(
-            format!("{} {} ({}) {{", m.tpe, m.id.id, args_str.join(", ")).as_str(),
+            format!("{} {} ({}) {{", m.ty, m.id.id, args_str.join(", ")).as_str(),
         )?;
         size += self.visit_block(&m.block)?;
         size += self.indented_write("}")?;

@@ -266,10 +266,10 @@ impl<'p> SemanticChecker<'p> {
         match fmain {
             None => self.err(err!("Method \"main\" does not exist.")),
             Some(f) => {
-                if f.tpe != Type::Void {
+                if f.ty != Type::Void {
                     self.err(err!(
                         "Method \"main\" should return void, but was give {}.",
-                        f.tpe
+                        f.ty
                     ));
                 } else if !f.arguments.is_empty() {
                     self.err(err!("Method \"main\" should not have any arguments."));
@@ -295,12 +295,12 @@ impl<'p> SemanticChecker<'p> {
     fn check_statement(&self, s: &mut Statement) {
         match &mut s.stmt {
             Stmt_::Assign(assign) => {
-                let loc_tpe = self.check_loc_access(&mut assign.location);
-                let expr_tpe = self.check_expr(&mut assign.expr);
-                if loc_tpe != expr_tpe {
+                let loc_ty = self.check_loc_access(&mut assign.location);
+                let expr_ty = self.check_expr(&mut assign.expr);
+                if loc_ty != expr_ty {
                     self.err(err_span!(
                         s.span,
-                        "{loc_tpe} type expected, but expression has {expr_tpe}.",
+                        "{loc_ty} type expected, but expression has {expr_ty}.",
                     ));
                 }
             }
@@ -352,17 +352,17 @@ impl<'p> SemanticChecker<'p> {
                 .symbols
                 .find_method_decl(method.as_ref().unwrap().as_str());
             if let MethodOrImport::Method(m) = &decl.unwrap() {
-                let return_tpe = match r {
+                let return_ty = match r {
                     None => Type::Void,
                     Some(e) => self.check_expr(e),
                 };
-                if return_tpe != m.tpe {
+                if return_ty != m.ty {
                     self.err(err_span!(
                         *span,
                         "Type {} returned, but method {} expects {}.",
-                        return_tpe,
+                        return_ty,
                         m.id.id,
-                        m.tpe
+                        m.ty
                     ));
                 }
             } else {
@@ -383,11 +383,11 @@ impl<'p> SemanticChecker<'p> {
     }
 
     fn check_pred(&self, pred: &mut Expr) {
-        let pred_tpe = self.check_expr(pred);
-        if pred_tpe != Type::Bool {
+        let pred_ty = self.check_expr(pred);
+        if pred_ty != Type::Bool {
             self.err(err_span!(
                 pred.span,
-                "Predicate of if statement is of type {pred_tpe}, but bool expected."
+                "Predicate of if statement is of type {pred_ty}, but bool expected."
             ));
         }
     }
@@ -413,32 +413,32 @@ impl<'p> SemanticChecker<'p> {
             }
             for i in 0..decl.arguments.len() {
                 let expr = c.arguments.get_mut(i).unwrap();
-                let expected = &decl.arguments.get(i).unwrap().tpe;
-                let tpe = self.check_expr(expr);
-                if tpe != *expected {
+                let expected = &decl.arguments.get(i).unwrap().ty;
+                let ty = self.check_expr(expr);
+                if ty != *expected {
                     self.err(err_span!(
                         expr.span,
-                        "{expected} expected, but {tpe} given.",
+                        "{expected} expected, but {ty} given.",
                     ));
                 }
             }
-            return decl.tpe.clone();
+            return decl.ty.clone();
         }
         Type::Void
     }
 
     fn check_loc_access(&self, loc: &mut Location) -> Type {
-        let mut tpe = Type::Void;
+        let mut ty = Type::Void;
         match loc {
             Location::Scalar(id) => {
                 if let Some(d) = self.find_var_decl(id) {
-                    tpe = d.tpe.clone();
+                    ty = d.ty.clone();
                 }
             }
             Location::Vector(id, expr) => {
                 if let Some(d) = self.find_var_decl(id) {
-                    match d.tpe.clone() {
-                        Type::Array(ele_tpe, _) => tpe = *ele_tpe,
+                    match d.ty.clone() {
+                        Type::Array(ele_ty, _) => ty = *ele_ty,
                         _ => {
                             self.err(err_span!(
                                 id.span,
@@ -447,28 +447,28 @@ impl<'p> SemanticChecker<'p> {
                             ));
                         }
                     };
-                    let tpe = self.check_expr(expr);
-                    if tpe != Type::Int {
+                    let ty = self.check_expr(expr);
+                    if ty != Type::Int {
                         self.err(err_span!(
                             expr.span,
-                            "Index of array access should be int, but found {tpe}."
+                            "Index of array access should be int, but found {ty}."
                         ));
                     }
                 }
             }
         }
 
-        tpe
+        ty
     }
 
     fn check_expr(&self, e: &mut Expr) -> Type {
-        e.tpe = match &mut e.expr {
+        e.ty = match &mut e.expr {
             Expr_::Location(l) => self.check_loc_access(l),
             Expr_::MethodCall(c) => self.check_method_call(c, &e.span),
             Expr_::Literal(l) => literal_type(l),
             Expr_::Len(id) => {
                 if let Some(decl) = self.find_var_decl(id) {
-                    match decl.tpe.clone() {
+                    match decl.ty.clone() {
                         Type::Array(..) => Type::Int,
                         _ => {
                             self.err(err_span!(
@@ -483,51 +483,51 @@ impl<'p> SemanticChecker<'p> {
                     Type::Int
                 }
             }
-            Expr_::Arith(l, op, r) => {
-                self.check_expr_tpe(l, &Type::Int);
-                self.check_expr_tpe(r, &Type::Int);
+            Expr_::Arith(l, _, r) => {
+                self.check_expr_type(l, &Type::Int);
+                self.check_expr_type(r, &Type::Int);
                 Type::Int
             },
-            Expr_::Cmp(l, op, r) => {
-                self.check_expr_tpe(l, &Type::Int);
-                self.check_expr_tpe(r, &Type::Int);
+            Expr_::Cmp(l, _, r) => {
+                self.check_expr_type(l, &Type::Int);
+                self.check_expr_type(r, &Type::Int);
                 Type::Bool
             },
-            Expr_::Cond(l, op, r) => {
-                self.check_expr_tpe(l, &Type::Bool);
-                self.check_expr_tpe(r, &Type::Bool);
+            Expr_::Cond(l, _, r) => {
+                self.check_expr_type(l, &Type::Bool);
+                self.check_expr_type(r, &Type::Bool);
                 Type::Bool
             },
             Expr_::NNeg(e) => {
-                self.check_expr_tpe(e, &Type::Int);
+                self.check_expr_type(e, &Type::Int);
                 Type::Int
             }
             Expr_::LNeg(e) => {
-                self.check_expr_tpe(e, &Type::Bool);
+                self.check_expr_type(e, &Type::Bool);
                 Type::Bool
             }
             Expr_::TernaryOp(p, t, f) => {
-                self.check_expr_tpe(p, &Type::Bool);
-                let tpe_t = self.check_expr(&mut *t);
-                let tpe_f = self.check_expr(&mut *f);
-                if tpe_t != tpe_f {
+                self.check_expr_type(p, &Type::Bool);
+                let ty_t = self.check_expr(&mut *t);
+                let ty_f = self.check_expr(&mut *f);
+                if ty_t != ty_f {
                     self.err(err_span!(
                         e.span,
-                        "Ternary expression has conflict types: {tpe_t} and {tpe_f}"
+                        "Ternary expression has conflict types: {ty_t} and {ty_f}"
                     ))
                 }
-                tpe_t
+                ty_t
             }
         };
-        e.tpe.clone()
+        e.ty.clone()
     }
 
-    fn check_expr_tpe(&self, e: &mut Expr, t: &Type) {
-        let tpe = self.check_expr(e);
-        if tpe != *t {
+    fn check_expr_type(&self, e: &mut Expr, t: &Type) {
+        let ty = self.check_expr(e);
+        if ty != *t {
             self.err(err_span!(
                 e.span,
-                "{t} expected, but expression evaluates to {tpe}"
+                "{t} expected, but expression evaluates to {ty}"
             ));
         }
     }

@@ -47,22 +47,22 @@ pub Expr: Expr = {
     #[precedence(level="0")]
     <start:@L> <loc: Location> <end:@R> => Expr {
         expr: Expr_::Location(loc),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <c: MethodCall> <end:@R> => Expr {
         expr: Expr_::MethodCall(c),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <lit: Literal> <end:@R> => Expr {
         expr: Expr_::Literal(lit),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> "len" "(" <id: ID> ")" <end:@R> => Expr {
         expr: Expr_::Len(id),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -70,13 +70,13 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> "-" <e:Expr> <end:@R> => Expr {
         expr: Expr_::NNeg(Box::new(e)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
     <start:@L> "!" <e:Expr> <end:@R> => Expr {
         expr: Expr_::LNeg(Box::new(e)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -84,17 +84,17 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "*" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Arith(Box::new(l), ArithOp::Mul, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "/" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Arith(Box::new(l), ArithOp::Div, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "%" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Arith(Box::new(l), ArithOp::Mod, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -102,12 +102,12 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "+" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Arith(Box::new(l), ArithOp::Add, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "-" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Arith(Box::new(l), ArithOp::Sub, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -115,22 +115,22 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "<" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Cmp(Box::new(l), CmpOp::LT, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "<=" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Cmp(Box::new(l), CmpOp::LE, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> ">" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Cmp(Box::new(l), CmpOp::GT, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> ">=" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Cmp(Box::new(l), CmpOp::GE, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -138,12 +138,12 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l:Expr> "==" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Cmp(Box::new(l), CmpOp::EQ, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "!=" <r:Expr> <end:@R> => Expr {
         expr: Expr_::Cmp(Box::new(l), CmpOp::NE, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -151,7 +151,7 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l: Expr> "&&" <r: Expr> <end:@R> => Expr {
         expr: Expr_::Cond(Box::new(l), CondOp::And, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -159,7 +159,7 @@ pub Expr: Expr = {
     #[assoc(side="left")]
     <start:@L> <l: Expr> "||" <r: Expr> <end:@R> => Expr {
         expr: Expr_::Cond(Box::new(l), CondOp::Or, Box::new(r)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
 
@@ -167,7 +167,7 @@ pub Expr: Expr = {
     #[assoc(side="right")]
     <start:@L> <pred: Expr> "?" <t: Expr> ":" <f: Expr> <end:@R> => Expr {
         expr: Expr_::TernaryOp(Box::new(pred), Box::new(t), Box::new(f)),
-        tpe: Type::Void,
+        ty: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     }
 }
@@ -184,13 +184,13 @@ pub AssignStmt: Statement = {
                 expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
-                        tpe: Type::Void,
+                        ty: Type::Void,
                         span: Some(SrcSpan::new(start, lend)),
                     }),
                     ArithOp::Add,
                     Box::new(e.clone()),
                 ),
-                tpe: Type::Void,
+                ty: Type::Void,
                 span: e.span,
             }
         }),
@@ -203,13 +203,13 @@ pub AssignStmt: Statement = {
                 expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
-                        tpe: Type::Void,
+                        ty: Type::Void,
                         span: Some(SrcSpan::new(start, lend)),
                     }),
                     ArithOp::Sub,
                     Box::new(e.clone()),
                 ),
-                tpe: Type::Void,
+                ty: Type::Void,
                 span: e.span,
             }
         }),
@@ -222,17 +222,17 @@ pub AssignStmt: Statement = {
                 expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
-                        tpe: Type::Void,
+                        ty: Type::Void,
                         span: Some(SrcSpan::new(start, lend))
                     }),
                     ArithOp::Add,
                     Box::new(Expr{
                         expr: Expr_::Literal(Literal::Int(1)),
-                        tpe: Type::Void,
+                        ty: Type::Void,
                         span: Some(SrcSpan::new(start, end))
                     }),
                 ),
-                tpe: Type::Void,
+                ty: Type::Void,
                 span: Some(SrcSpan::new(start, end)),
             }
         }),
@@ -245,17 +245,17 @@ pub AssignStmt: Statement = {
                 expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
-                        tpe: Type::Void,
+                        ty: Type::Void,
                         span: Some(SrcSpan::new(start, lend))
                     }),
                     ArithOp::Sub,
                     Box::new(Expr{
                         expr: Expr_::Literal(Literal::Int(1)),
-                        tpe: Type::Void,
+                        ty: Type::Void,
                         span: Some(SrcSpan::new(start, end))
                     })
                 ),
-                tpe: Type::Void,
+                ty: Type::Void,
                 span: Some(SrcSpan::new(start, end)),
             }
         }),
@@ -332,9 +332,9 @@ pub FieldDeclList: Vec<FieldDecl> = {
     <t: Type> <fields: Comma<Field>> ";" =>
         fields.into_iter().map(|(id, size, span)| {
             match size {
-                None => FieldDecl{id: id, tpe: t.clone(), span: Some(span)},
+                None => FieldDecl{id: id, ty: t.clone(), span: Some(span)},
                 Some(size) =>
-                    FieldDecl{id: id, tpe: Type::Array(Box::new(t.clone()), size), span: Some(span)}
+                    FieldDecl{id: id, ty: Type::Array(Box::new(t.clone()), size), span: Some(span)}
             }
         }).collect(),
 }
@@ -350,21 +350,21 @@ pub Block : Block = {
 
 pub MethodArg: FieldDecl = {
     <start:@L> <t: Type> <id: ID> <end:@R> => FieldDecl {
-        id: id, tpe: t, span: Some(SrcSpan::new(start, end)),
+        id: id, ty: t, span: Some(SrcSpan::new(start, end)),
     },
 }
 
 pub MethodDecl: MethodDecl = {
     <start:@L> <t: Type> <id: ID> "(" ")" <b: Block> <end:@R> => MethodDecl {
         id: id,
-        tpe: t,
+        ty: t,
         arguments: Vec::new(),
         block: b,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <t: Type> <id: ID> "(" <args: Comma<MethodArg>> ")" <b: Block> <end:@R> => MethodDecl {
         id: id,
-        tpe: t,
+        ty: t,
         arguments: args,
         block: b,
         span: Some(SrcSpan::new(start, end)),

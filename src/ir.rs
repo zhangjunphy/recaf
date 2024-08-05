@@ -12,7 +12,7 @@ pub enum Locality {
 #[derive(Clone)]
 pub struct Var {
     pub id: usize,
-    pub tpe: ast::Type,
+    pub ty: ast::Type,
     pub decl: Option<ast::FieldDecl>,
     pub span: Option<SrcSpan>,
     pub locality: Locality,
@@ -82,7 +82,7 @@ pub enum Statement {
     Return(Option<Val>),
     Alloca {
         dst: Rc<Var>,
-        tpe: ast::Type,
+        ty: ast::Type,
         size: Option<usize>,
     },
     Load {
@@ -138,6 +138,6 @@ impl BasicBlock {
 pub struct Function {
     pub name: String,
     pub args: Vec<Rc<Var>>,
-    pub tpe: ast::Type,
+    pub ty: ast::Type,
     pub body: Vec<BasicBlock>,
 }

@@ -69,14 +69,14 @@ impl VarCache {
     fn new_local(
         &mut self,
         ast_scope: ast::Scope,
-        tpe: ast::Type,
+        ty: ast::Type,
         decl: Option<ast::FieldDecl>,
         span: Option<SrcSpan>,
     ) -> Rc<ir::Var> {
         let id = self.new_var_id();
         let var = Rc::new(ir::Var {
             id,
-            tpe,
+            ty,
             decl: decl.clone(),
             span,
             locality: ir::Locality::Local,
@@ -93,14 +93,14 @@ impl VarCache {
 
     fn new_global(
         &mut self,
-        tpe: ast::Type,
+        ty: ast::Type,
         decl: Option<ast::FieldDecl>,
         span: Option<SrcSpan>,
     ) -> Rc<ir::Var> {
         let id = self.new_var_id();
         let var = Rc::new(ir::Var {
             id,
-            tpe,
+            ty,
             decl: decl.clone(),
             span,
             locality: ir::Locality::Global,
@@ -286,16 +286,16 @@ impl<'s> CFGBuild<'s> {
 
     fn new_local(&self, fld: &ast::FieldDecl) -> Rc<ir::Var> {
         let scope = self.state.borrow().current_ast_scope;
-        self.mut_cache(|cache| cache.new_local(scope, fld.tpe.clone(), Some(fld.clone()), fld.span))
+        self.mut_cache(|cache| cache.new_local(scope, fld.ty.clone(), Some(fld.clone()), fld.span))
     }
 
     fn new_global(&self, fld: &ast::FieldDecl) -> Rc<ir::Var> {
-        self.mut_cache(|cache| cache.new_global(fld.tpe.clone(), Some(fld.clone()), fld.span))
+        self.mut_cache(|cache| cache.new_global(fld.ty.clone(), Some(fld.clone()), fld.span))
     }
 
-    fn new_temp(&self, tpe: &ast::Type) -> Rc<ir::Var> {
+    fn new_temp(&self, ty: &ast::Type) -> Rc<ir::Var> {
         let scope = self.state.borrow().current_ast_scope;
-        self.mut_cache(|cache| cache.new_local(scope, tpe.clone(), None, None))
+        self.mut_cache(|cache| cache.new_local(scope, ty.clone(), None, None))
     }
 
     fn lookup_id(&self, id: &ast::ID) -> Rc<ir::Var> {
@@ -470,7 +470,7 @@ impl<'s> CFGBuild<'s> {
             ast::Expr_::MethodCall(c) => {
                 let args = c.arguments.iter().map(|e| self.visit_expr(&e)).collect();
                 let ty = match &self.symbols.find_method_decl(c.name.id.as_str()).unwrap() {
-                    semantic::MethodOrImport::Method(decl) => Some(decl.tpe.clone()),
+                    semantic::MethodOrImport::Method(decl) => Some(decl.ty.clone()),
                     _ => None,
                 };
                 assert!(ty.is_some());
@@ -488,7 +488,7 @@ impl<'s> CFGBuild<'s> {
                     .symbols
                     .find_var_decl(&self.get_scope(), id.id.as_str())
                     .unwrap()
-                    .tpe;
+                    .ty;
                 ir::Val::Imm(ast::Literal::Int(ty.array_len()))
             }
             ast::Expr_::Arith(l, op, r) => {
@@ -529,7 +529,7 @@ impl<'s> CFGBuild<'s> {
             }
             ast::Expr_::NNeg(v) => {
                 let val = self.visit_expr(v.as_ref());
-                let local = self.new_temp(&v.tpe);
+                let local = self.new_temp(&v.ty);
                 self.push_stmt(ir::Statement::NNeg { dst: local.clone(), val });
                 ir::Val::Var(local)
             }
@@ -542,7 +542,7 @@ impl<'s> CFGBuild<'s> {
             ast::Expr_::TernaryOp(pred, t, f) => {
                 // Build a control flow for choice op
                 let pred_val = self.visit_expr(&pred);
-                let var = self.new_temp(&expr.tpe);
+                let var = self.new_temp(&expr.ty);
                 let head = self.pop_current_block().borrow().label;
                 let br = |e| {
                     let entry = self.new_block(Vec::new());
@@ -563,14 +563,14 @@ impl<'s> CFGBuild<'s> {
         }
     }
 
-    fn array_element_tpe(t: &ast::Type) -> Option<&ast::Type> {
+    fn array_element_ty(t: &ast::Type) -> Option<&ast::Type> {
         match t {
             ast::Type::Array(t, _) => Some(t.as_ref()),
             _ => None,
         }
     }
 
-    fn ptr_underlying_tpe(t: &ast::Type) -> Option<&ast::Type> {
+    fn ptr_underlying_ty(t: &ast::Type) -> Option<&ast::Type> {
         match t {
             ast::Type::Ptr(t) => Some(t.as_ref()),
             _ => None,
@@ -579,20 +579,20 @@ impl<'s> CFGBuild<'s> {
 
     fn vector_deref(&self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::Var> {
         let var_vector = self.lookup_id(id);
-        let ele_tpe = Self::array_element_tpe(&var_vector.tpe);
-        assert!(ele_tpe.is_some());
-        let ptr_tpe = ast::Type::Ptr(Box::new(ele_tpe.unwrap().clone()));
+        let ele_ty = Self::array_element_ty(&var_vector.ty);
+        assert!(ele_ty.is_some());
+        let ptr_ty = ast::Type::Ptr(Box::new(ele_ty.unwrap().clone()));
 
         let idx_var = self.visit_expr(expr);
-        let offset_var = self.new_temp(&ptr_tpe);
+        let offset_var = self.new_temp(&ptr_ty);
         self.push_stmt(ir::Statement::Arith {
             dst: offset_var.clone(),
             op: ast::ArithOp::Mul,
-            l: ir::Val::Imm(ast::Literal::Int(ele_tpe.unwrap().size())),
+            l: ir::Val::Imm(ast::Literal::Int(ele_ty.unwrap().size())),
             r: idx_var,
         });
 
-        let ele_ptr = self.new_temp(&ptr_tpe);
+        let ele_ptr = self.new_temp(&ptr_ty);
         self.push_stmt(ir::Statement::Arith {
             dst: ele_ptr.clone(),
             op: ast::ArithOp::Add,
@@ -610,7 +610,7 @@ impl<'s> CFGBuild<'s> {
                 match &var.locality {
                     ir::Locality::Local => return ir::Val::Var(var),
                     ir::Locality::Global => {
-                        let dst = self.new_temp(&var.tpe);
+                        let dst = self.new_temp(&var.ty);
                         self.push_stmt(ir::Statement::Load {
                             dst: dst.clone(),
                             ptr: ir::Val::Var(var),
@@ -622,7 +622,7 @@ impl<'s> CFGBuild<'s> {
             ast::Location::Vector(id, idx_expr) => {
                 let var = self.lookup_id(id);
                 let ele_ptr = self.vector_deref(id, idx_expr);
-                let dst = self.new_temp(Self::array_element_tpe(&var.tpe).unwrap());
+                let dst = self.new_temp(Self::array_element_ty(&var.ty).unwrap());
                 self.push_stmt(ir::Statement::Load {
                     dst: dst.clone(),
                     ptr: ir::Val::Var(ele_ptr),

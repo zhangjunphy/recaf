@@ -43,7 +43,7 @@ mod tests {
                 let f = program.methods.get(0).unwrap();
                 match &f.block.statements.get(2).unwrap().stmt {
                     Stmt_::Assign(assign) => {
-                        assert_eq!(assign.expr.tpe, Type::Int);
+                        assert_eq!(assign.expr.ty, Type::Int);
                     }
                     _ => panic!(),
                 }
