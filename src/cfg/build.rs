@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::cfg::def::{Program, CFG};
 use crate::consts;
 use crate::ir;
 use crate::semantic;
@@ -6,8 +7,8 @@ use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::cfg::def::{CFG, Program};
 
+/*
 pub struct VarMap {
     var_to_ast_scope: HashMap<usize, ast::Scope>,
     ast_symbol_to_var: HashMap<(ast::Scope, String), usize>,
@@ -94,7 +95,7 @@ pub struct BuildState {
     next_bb_id: usize,
     current_ast_scope: ast::Scope,
     var_map: VarMap,
-    current_cfg: RefCell<Option<CFG<ir::BasicBlock, ir::Branch>>>,
+    current_cfg: RefCell<Option<CFG<ir::Label, ir::BasicBlock, ir::Branch>>>,
     current_block: RefCell<Option<ir::BasicBlock>>,
 }
 
@@ -169,7 +170,7 @@ impl<'s> CFGBuild<'s> {
 
     fn pop_current_block(&self) -> Rc<ir::BasicBlock> {
         let bb = self.state.borrow().current_block.take();
-        let block = Rc::new(bb.unwrap());
+        let block = Rc::new(RefCell::new(bb.unwrap()));
         self.state
             .borrow()
             .current_cfg
@@ -387,7 +388,7 @@ impl<'s> CFGBuild<'s> {
         let offset_var = self.new_temp(&ptr_tpe);
         self.push_stmt(ir::Statement::Arith {
             dst: offset_var.clone(),
-            op: ir::ArithOp::Mul,
+            op: ast::ArithOp::Mul,
             l: ir::Val::Imm(ast::Literal::Int(ele_tpe.unwrap().size())),
             r: idx_var,
         });
@@ -395,7 +396,7 @@ impl<'s> CFGBuild<'s> {
         let ele_ptr = self.new_temp(&ptr_tpe);
         self.push_stmt(ir::Statement::Arith {
             dst: ele_ptr.clone(),
-            op: ir::ArithOp::Add,
+            op: ast::ArithOp::Add,
             l: ir::Val::Var(var_vector.clone()),
             r: ir::Val::Var(offset_var),
         });
@@ -460,3 +461,5 @@ impl<'s> CFGBuild<'s> {
         }
     }
 }
+
+*/

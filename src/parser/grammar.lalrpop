@@ -83,17 +83,17 @@ pub Expr: Expr = {
     #[precedence(level="2")]
     #[assoc(side="left")]
     <start:@L> <l:Expr> "*" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::Mul, Box::new(r)),
+        expr: Expr_::Arith(Box::new(l), ArithOp::Mul, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "/" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::Div, Box::new(r)),
+        expr: Expr_::Arith(Box::new(l), ArithOp::Div, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "%" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::Mod, Box::new(r)),
+        expr: Expr_::Arith(Box::new(l), ArithOp::Mod, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
@@ -101,12 +101,12 @@ pub Expr: Expr = {
     #[precedence(level="3")]
     #[assoc(side="left")]
     <start:@L> <l:Expr> "+" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::Add, Box::new(r)),
+        expr: Expr_::Arith(Box::new(l), ArithOp::Add, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "-" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::Sub, Box::new(r)),
+        expr: Expr_::Arith(Box::new(l), ArithOp::Sub, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
@@ -114,22 +114,22 @@ pub Expr: Expr = {
     #[precedence(level="4")]
     #[assoc(side="left")]
     <start:@L> <l:Expr> "<" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::LT, Box::new(r)),
+        expr: Expr_::Cmp(Box::new(l), CmpOp::LT, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "<=" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::LE, Box::new(r)),
+        expr: Expr_::Cmp(Box::new(l), CmpOp::LE, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> ">" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::GT, Box::new(r)),
+        expr: Expr_::Cmp(Box::new(l), CmpOp::GT, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> ">=" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::GE, Box::new(r)),
+        expr: Expr_::Cmp(Box::new(l), CmpOp::GE, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
@@ -137,12 +137,12 @@ pub Expr: Expr = {
     #[precedence(level="5")]
     #[assoc(side="left")]
     <start:@L> <l:Expr> "==" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::EQ, Box::new(r)),
+        expr: Expr_::Cmp(Box::new(l), CmpOp::EQ, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
     <start:@L> <l:Expr> "!=" <r:Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::NE, Box::new(r)),
+        expr: Expr_::Cmp(Box::new(l), CmpOp::NE, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
@@ -150,7 +150,7 @@ pub Expr: Expr = {
     #[precedence(level="6")]
     #[assoc(side="left")]
     <start:@L> <l: Expr> "&&" <r: Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::And, Box::new(r)),
+        expr: Expr_::Cond(Box::new(l), CondOp::And, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
@@ -158,7 +158,7 @@ pub Expr: Expr = {
     #[precedence(level="7")]
     #[assoc(side="left")]
     <start:@L> <l: Expr> "||" <r: Expr> <end:@R> => Expr {
-        expr: Expr_::BinOp(Box::new(l), BinOp::Or, Box::new(r)),
+        expr: Expr_::Cond(Box::new(l), CondOp::Or, Box::new(r)),
         tpe: Type::Void,
         span: Some(SrcSpan::new(start, end)),
     },
@@ -181,13 +181,13 @@ pub AssignStmt: Statement = {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
-                expr: Expr_::BinOp(
+                expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
                         tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend)),
                     }),
-                    BinOp::Add,
+                    ArithOp::Add,
                     Box::new(e.clone()),
                 ),
                 tpe: Type::Void,
@@ -200,13 +200,13 @@ pub AssignStmt: Statement = {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
-                expr: Expr_::BinOp(
+                expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
                         tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend)),
                     }),
-                    BinOp::Sub,
+                    ArithOp::Sub,
                     Box::new(e.clone()),
                 ),
                 tpe: Type::Void,
@@ -219,13 +219,13 @@ pub AssignStmt: Statement = {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
-                expr: Expr_::BinOp(
+                expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
                         tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend))
                     }),
-                    BinOp::Add,
+                    ArithOp::Add,
                     Box::new(Expr{
                         expr: Expr_::Literal(Literal::Int(1)),
                         tpe: Type::Void,
@@ -242,13 +242,13 @@ pub AssignStmt: Statement = {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
-                expr: Expr_::BinOp(
+                expr: Expr_::Arith(
                     Box::new(Expr{
                         expr: Expr_::Location(loc),
                         tpe: Type::Void,
                         span: Some(SrcSpan::new(start, lend))
                     }),
-                    BinOp::Sub,
+                    ArithOp::Sub,
                     Box::new(Expr{
                         expr: Expr_::Literal(Literal::Int(1)),
                         tpe: Type::Void,
@@ -317,10 +317,10 @@ pub Type: Type = {
     "void" => Type::Void,
 }
 
-pub Field: (ID, Option<usize>, SrcSpan) = {
+pub Field: (ID, Option<i64>, SrcSpan) = {
     <start:@L> <id: ID> <end:@R> => (id, None, SrcSpan::new(start, end)),
     <start:@L> <id: ID> "[" <size: Int> "]" <end:@R> =>
-        (id, Some(size as usize), SrcSpan::new(start, end)),
+        (id, Some(size), SrcSpan::new(start, end)),
 }
 
 pub ImportDecl: ImportDecl = {

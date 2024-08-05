@@ -144,7 +144,9 @@ pub enum Expr_ {
     MethodCall(MethodCall),
     Literal(Literal),
     Len(ID),
-    BinOp(Box<Expr>, BinOp, Box<Expr>),
+    Arith(Box<Expr>, ArithOp, Box<Expr>),
+    Cmp(Box<Expr>, CmpOp, Box<Expr>),
+    Cond(Box<Expr>, CondOp, Box<Expr>),
     NNeg(Box<Expr>), // Numerical negation
     LNeg(Box<Expr>), // Logical negation
     TernaryOp(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -163,7 +165,7 @@ pub enum Type {
     Bool,
     Char,
     Ptr(Box<Type>),
-    Array(Box<Type>, usize),
+    Array(Box<Type>, i64),
 }
 
 impl Type {
@@ -174,20 +176,20 @@ impl Type {
             Type::Bool => 1,
             Type::Char => 1,
             Type::Ptr(_) => 8,
-            Type::Array(tpe, n) => tpe.size() * (*n as i64),
+            Type::Array(tpe, n) => tpe.size() * n,
         }
     }
 
     pub fn array_len(&self) -> i64 {
         match self {
-            Type::Array(tpe, n) => n,
+            Type::Array(_, n) => *n,
             _ => panic!(),
         }
     }
 }
 
 pub fn str_type(s: &String) -> Type {
-    Type::Array(Box::new(Type::Char), s.len())
+    Type::Array(Box::new(Type::Char), s.len() as i64)
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -197,13 +199,16 @@ pub enum Field {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum BinOp {
+pub enum ArithOp {
     Mul,
     Div,
     Add,
     Sub,
     Mod,
+}
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum CmpOp {
     LT,
     GT,
     LE,
@@ -211,25 +216,12 @@ pub enum BinOp {
 
     EQ,
     NE,
-
-    And,
-    Or,
 }
 
-impl BinOp {
-    pub fn ty(&self) -> Type {
-        match self {
-            Self::Mul | Self::Div | Self::Add | Self::Sub | Self::Mod => Type::Int,
-            Self::LT
-            | Self::GT
-            | Self::LE
-            | Self::GE
-            | Self::EQ
-            | Self::NE
-            | Self::And
-            | Self::Or => Type::Bool,
-        }
-    }
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum CondOp {
+    And,
+    Or,
 }
 
 impl fmt::Display for Literal {
@@ -244,22 +236,36 @@ impl fmt::Display for Literal {
     }
 }
 
-impl fmt::Display for BinOp {
+impl fmt::Display for ArithOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            BinOp::Mul => write!(f, "*"),
-            BinOp::Div => write!(f, "/"),
-            BinOp::Add => write!(f, "+"),
-            BinOp::Sub => write!(f, "-"),
-            BinOp::Mod => write!(f, "%"),
-            BinOp::LT => write!(f, "<"),
-            BinOp::GT => write!(f, ">"),
-            BinOp::LE => write!(f, "<="),
-            BinOp::GE => write!(f, ">="),
-            BinOp::EQ => write!(f, "=="),
-            BinOp::NE => write!(f, "!="),
-            BinOp::And => write!(f, "&&"),
-            BinOp::Or => write!(f, "||"),
+            ArithOp::Mul => write!(f, "*"),
+            ArithOp::Div => write!(f, "/"),
+            ArithOp::Add => write!(f, "+"),
+            ArithOp::Sub => write!(f, "-"),
+            ArithOp::Mod => write!(f, "%"),
+        }
+    }
+}
+
+impl fmt::Display for CmpOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CmpOp::LT => write!(f, "<"),
+            CmpOp::GT => write!(f, ">"),
+            CmpOp::LE => write!(f, "<="),
+            CmpOp::GE => write!(f, ">="),
+            CmpOp::EQ => write!(f, "=="),
+            CmpOp::NE => write!(f, "!="),
+        }
+    }
+}
+
+impl fmt::Display for CondOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CondOp::And => write!(f, "&&"),
+            CondOp::Or => write!(f, "||"),
         }
     }
 }
@@ -323,7 +329,9 @@ impl fmt::Display for Expr {
             Expr_::MethodCall(c) => write!(f, "{}", c),
             Expr_::Literal(l) => write!(f, "{}", l),
             Expr_::Len(id) => write!(f, "len({})", id),
-            Expr_::BinOp(l, op, r) => write!(f, "{} {} {}", *l, op, *r),
+            Expr_::Arith(l, op, r) => write!(f, "{} {} {}", *l, op, *r),
+            Expr_::Cmp(l, op, r) => write!(f, "{} {} {}", *l, op, *r),
+            Expr_::Cond(l, op, r) => write!(f, "{} {} {}", *l, op, *r),
             Expr_::NNeg(e) => write!(f, "-{}", *e),
             Expr_::LNeg(e) => write!(f, "!{}", *e),
             Expr_::TernaryOp(p, e1, e2) => write!(f, "{} ? {} : {}", *p, *e1, *e2),

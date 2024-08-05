@@ -483,7 +483,21 @@ impl<'p> SemanticChecker<'p> {
                     Type::Int
                 }
             }
-            Expr_::BinOp(l, op, r) => self.check_bin_expr(*op, l, r),
+            Expr_::Arith(l, op, r) => {
+                self.check_expr_tpe(l, &Type::Int);
+                self.check_expr_tpe(r, &Type::Int);
+                Type::Int
+            },
+            Expr_::Cmp(l, op, r) => {
+                self.check_expr_tpe(l, &Type::Int);
+                self.check_expr_tpe(r, &Type::Int);
+                Type::Bool
+            },
+            Expr_::Cond(l, op, r) => {
+                self.check_expr_tpe(l, &Type::Bool);
+                self.check_expr_tpe(r, &Type::Bool);
+                Type::Bool
+            },
             Expr_::NNeg(e) => {
                 self.check_expr_tpe(e, &Type::Int);
                 Type::Int
@@ -515,27 +529,6 @@ impl<'p> SemanticChecker<'p> {
                 e.span,
                 "{t} expected, but expression evaluates to {tpe}"
             ));
-        }
-    }
-
-    fn check_bin_expr(&self, op: BinOp, l: &mut Box<Expr>, r: &mut Box<Expr>) -> Type {
-        let check = |l: &mut Box<Expr>, r: &mut Box<Expr>, t: &Type| {
-            self.check_expr_tpe(&mut *l, t);
-            self.check_expr_tpe(&mut *r, t);
-        };
-        match op {
-            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
-                check(l, r, &Type::Int);
-                Type::Int
-            }
-            BinOp::LT | BinOp::GT | BinOp::LE | BinOp::GE | BinOp::EQ | BinOp::NE => {
-                check(l, r, &Type::Int);
-                Type::Bool
-            }
-            BinOp::And | BinOp::Or => {
-                check(l, r, &Type::Bool);
-                Type::Bool
-            }
         }
     }
 

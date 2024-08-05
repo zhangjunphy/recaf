@@ -41,35 +41,6 @@ pub enum Val {
     Imm(ast::Literal),
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum ArithOp {
-    Mul,
-    Div,
-    Add,
-    Sub,
-    Mod,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum RelOp {
-    LT,
-    GT,
-    LE,
-    GE,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum CondOp {
-    And,
-    Or,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum EqOp {
-    EQ,
-    NE,
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Label {
     pub id: usize,
@@ -124,25 +95,19 @@ pub enum Statement {
     },
     Arith {
         dst: Rc<Var>,
-        op: ArithOp,
+        op: ast::ArithOp,
         l: Val,
         r: Val,
     },
-    Rel {
+    Cmp {
         dst: Rc<Var>,
-        op: RelOp,
+        op: ast::CmpOp,
         l: Val,
         r: Val,
     },
     Cond {
         dst: Rc<Var>,
-        op: CondOp,
-        l: Val,
-        r: Val,
-    },
-    Eq {
-        dst: Rc<Var>,
-        op: EqOp,
+        op: ast::CondOp,
         l: Val,
         r: Val,
     },

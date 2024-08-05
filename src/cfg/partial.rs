@@ -410,7 +410,7 @@ impl<'s> CFGBuild<'s> {
                 // Then transform this for-loop into a while-loop
                 let mut stmts = f.block.statements.clone();
                 stmts.push(f.update.as_ref().clone());
-                let mut w = ast::Statement {
+                let w = ast::Statement {
                     stmt: ast::Stmt_::While(ast::While {
                         pred: f.pred.clone(),
                         block: ast::Block {
@@ -470,7 +470,7 @@ impl<'s> CFGBuild<'s> {
             ast::Expr_::MethodCall(c) => {
                 let args = c.arguments.iter().map(|e| self.visit_expr(&e)).collect();
                 let ty = match &self.symbols.find_method_decl(c.name.id.as_str()).unwrap() {
-                    semantic::MethodOrImport::Method(decl) => Some(decl.tpe),
+                    semantic::MethodOrImport::Method(decl) => Some(decl.tpe.clone()),
                     _ => None,
                 };
                 assert!(ty.is_some());
@@ -484,19 +484,81 @@ impl<'s> CFGBuild<'s> {
             }
             ast::Expr_::Literal(l) => ir::Val::Imm(l.clone()),
             ast::Expr_::Len(id) => {
-                let ty = self
+                let ty = &self
                     .symbols
                     .find_var_decl(&self.get_scope(), id.id.as_str())
                     .unwrap()
                     .tpe;
                 ir::Val::Imm(ast::Literal::Int(ty.array_len()))
             }
-            ast::Expr_::BinOp(l, op, r) => {
+            ast::Expr_::Arith(l, op, r) => {
                 let lval = self.visit_expr(l.as_ref());
                 let rval = self.visit_expr(r.as_ref());
-                let local = self.new_temp(&op.ty());
-                self.push_stmt(ir::Statement::Arith { dst: local, op: op, l: lval, r: rval });
+                let local = self.new_temp(&ast::Type::Int);
+                self.push_stmt(ir::Statement::Arith {
+                    dst: local.clone(),
+                    op: *op,
+                    l: lval,
+                    r: rval,
+                });
                 ir::Val::Var(local)
+            }
+            ast::Expr_::Cmp(l, op, r) => {
+                let lval = self.visit_expr(l.as_ref());
+                let rval = self.visit_expr(r.as_ref());
+                let local = self.new_temp(&ast::Type::Bool);
+                self.push_stmt(ir::Statement::Cmp {
+                    dst: local.clone(),
+                    op: *op,
+                    l: lval,
+                    r: rval,
+                });
+                ir::Val::Var(local)
+            }
+            ast::Expr_::Cond(l, op, r) => {
+                let lval = self.visit_expr(l.as_ref());
+                let rval = self.visit_expr(r.as_ref());
+                let local = self.new_temp(&ast::Type::Bool);
+                self.push_stmt(ir::Statement::Cond {
+                    dst: local.clone(),
+                    op: *op,
+                    l: lval,
+                    r: rval,
+                });
+                ir::Val::Var(local)
+            }
+            ast::Expr_::NNeg(v) => {
+                let val = self.visit_expr(v.as_ref());
+                let local = self.new_temp(&v.tpe);
+                self.push_stmt(ir::Statement::NNeg { dst: local.clone(), val });
+                ir::Val::Var(local)
+            }
+            ast::Expr_::LNeg(v) => {
+                let val = self.visit_expr(v.as_ref());
+                let local = self.new_temp(&ast::Type::Bool);
+                self.push_stmt(ir::Statement::LNeg { dst: local.clone(), val });
+                ir::Val::Var(local)
+            }
+            ast::Expr_::TernaryOp(pred, t, f) => {
+                // Build a control flow for choice op
+                let pred_val = self.visit_expr(&pred);
+                let var = self.new_temp(&expr.tpe);
+                let head = self.pop_current_block().borrow().label;
+                let br = |e| {
+                    let entry = self.new_block(Vec::new());
+                    let val = self.visit_expr(e);
+                    self.push_stmt(ir::Statement::Assign { dst: var.clone(), src: val });
+                    let exit = self.pop_current_block().borrow().label;
+                    (entry, exit)
+                };
+                let (t_entry, t_exit) = br(t);
+                let (f_entry, f_exit) = br(f);
+                let landing_pad = self.new_block(Vec::new());
+                self.add_bb_edge(head, t_entry, Edge::JumpTrue(pred_val));
+                self.add_bb_edge(head, f_entry, Edge::JumpFalse);
+                self.add_bb_edge(t_exit, landing_pad, Edge::Continue);
+                self.add_bb_edge(f_exit, landing_pad, Edge::Continue);
+                ir::Val::Var(var)
             }
         }
     }
@@ -515,7 +577,7 @@ impl<'s> CFGBuild<'s> {
         }
     }
 
-    fn vector_deref(&mut self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::Var> {
+    fn vector_deref(&self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::Var> {
         let var_vector = self.lookup_id(id);
         let ele_tpe = Self::array_element_tpe(&var_vector.tpe);
         assert!(ele_tpe.is_some());
@@ -525,7 +587,7 @@ impl<'s> CFGBuild<'s> {
         let offset_var = self.new_temp(&ptr_tpe);
         self.push_stmt(ir::Statement::Arith {
             dst: offset_var.clone(),
-            op: ir::ArithOp::Mul,
+            op: ast::ArithOp::Mul,
             l: ir::Val::Imm(ast::Literal::Int(ele_tpe.unwrap().size())),
             r: idx_var,
         });
@@ -533,7 +595,7 @@ impl<'s> CFGBuild<'s> {
         let ele_ptr = self.new_temp(&ptr_tpe);
         self.push_stmt(ir::Statement::Arith {
             dst: ele_ptr.clone(),
-            op: ir::ArithOp::Add,
+            op: ast::ArithOp::Add,
             l: ir::Val::Var(var_vector.clone()),
             r: ir::Val::Var(offset_var),
         });
@@ -541,7 +603,7 @@ impl<'s> CFGBuild<'s> {
         ele_ptr
     }
 
-    fn read_from_location(&mut self, loc: &ast::Location) -> ir::Val {
+    fn read_from_location(&self, loc: &ast::Location) -> ir::Val {
         match &loc {
             ast::Location::Scalar(id) => {
                 let var = self.lookup_id(id);
@@ -570,7 +632,7 @@ impl<'s> CFGBuild<'s> {
         }
     }
 
-    fn write_to_location(&mut self, loc: &ast::Location, val: ir::Val) {
+    fn write_to_location(&self, loc: &ast::Location, val: ir::Val) {
         match &loc {
             ast::Location::Scalar(id) => {
                 let var = self.lookup_id(id);
