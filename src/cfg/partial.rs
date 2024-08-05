@@ -1,3 +1,6 @@
+//! Process AST into a cfg with three-address code.
+//! It is not a SSA yet. And basicblock parameters introduced by control flows are left empty.
+
 use crate::ast;
 use crate::cfg::def::CFG;
 use crate::consts;
@@ -6,15 +9,23 @@ use crate::semantic;
 use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
-
-// Process AST into a cfg with three-address code.
-// It is not a SSA yet. And basicblock parameters introduced by control flows are left empty.
 
 pub enum Edge {
     Continue,
     JumpTrue(ir::Val),
     JumpFalse,
+}
+
+impl fmt::Display for Edge {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Edge::Continue => f.write_str(""),
+            Edge::JumpTrue(v) => f.write_str(v.to_string().as_str()),
+            Edge::JumpFalse => f.write_str(""),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -24,6 +35,18 @@ pub enum Label {
     LoopExit,
     MethodEntry,
     MethodExit,
+}
+
+impl fmt::Display for Label {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Label::Just(l) => write!(f, "{}", l),
+            Label::LoopPred => f.write_str("loop_pred"),
+            Label::LoopExit => f.write_str("loop_exit"),
+            Label::MethodEntry => f.write_str("method_entry"),
+            Label::MethodExit => f.write_str("method_exit"),
+        }
+    }
 }
 
 type PartialCFG = CFG<Label, ir::BasicBlock, Edge>;
@@ -153,6 +176,11 @@ impl<'s> CFGBuild<'s> {
         }
     }
 
+    pub fn build(&mut self, p: &ast::Program) -> &Program {
+        self.visit_program(p);
+        &self.program
+    }
+
     fn new_block_id(&self) -> usize {
         let id = self.state.borrow().next_bb_id;
         self.state.borrow_mut().next_bb_id += 1;
@@ -197,12 +225,6 @@ impl<'s> CFGBuild<'s> {
         f(block.as_mut().unwrap());
     }
 
-    fn push_stmt_to_block(&self, l: &ir::Label, stmt: ir::Statement) {
-        self.mut_cfg(|cfg| {
-            let node = cfg.nodes.get_mut(&(Label::Just(*l))).unwrap();
-            node.borrow_mut().push_stmt(stmt);
-        });
-    }
     fn push_stmt(&self, stmt: ir::Statement) {
         self.mut_block(|b| {
             b.push_stmt(stmt);
@@ -299,8 +321,20 @@ impl<'s> CFGBuild<'s> {
     }
 
     fn lookup_id(&self, id: &ast::ID) -> Rc<ir::Var> {
-        let scope = self.state.borrow().current_ast_scope;
-        self.query_cache(|cache| cache.lookup_var(scope, id.id.as_str()).unwrap().clone())
+        let mut scope = self.state.borrow().current_ast_scope;
+        loop {
+            let var = self
+                .query_cache(|cache| cache.lookup_var(scope, id.id.as_str()).map(|v| v.clone()));
+            if let Some(v) = var {
+                return v;
+            } else {
+                match self.symbols.variables.get(&scope).unwrap().parent_scope {
+                    Some(s) => scope = s,
+                    None => break,
+                }
+            }
+        }
+        panic!()
     }
 
     fn find_decl(&self, id: &str) -> Option<&ast::FieldDecl> {
@@ -337,6 +371,7 @@ impl<'s> CFGBuild<'s> {
         }));
         let (entry, exit) = self.visit_block(&m.block, &m.arguments);
         let landing_pad = self.new_block(Vec::new());
+        self.pop_current_block();
 
         self.add_bb_edge(exit, landing_pad, Edge::Continue);
         self.tie_dummy_method_exit(landing_pad);
@@ -358,6 +393,11 @@ impl<'s> CFGBuild<'s> {
         // First build an entry block with method arguments.
         let args = method_args.into_iter().map(|a| self.new_local(a)).collect();
         let entry = self.new_block(args);
+
+        // Handle variable declarations
+        for fld in &b.fields {
+            self.new_local(fld);
+        }
 
         // Handle statements
         for s in &b.statements {
@@ -530,13 +570,19 @@ impl<'s> CFGBuild<'s> {
             ast::Expr_::NNeg(v) => {
                 let val = self.visit_expr(v.as_ref());
                 let local = self.new_temp(&v.ty);
-                self.push_stmt(ir::Statement::NNeg { dst: local.clone(), val });
+                self.push_stmt(ir::Statement::NNeg {
+                    dst: local.clone(),
+                    val,
+                });
                 ir::Val::Var(local)
             }
             ast::Expr_::LNeg(v) => {
                 let val = self.visit_expr(v.as_ref());
                 let local = self.new_temp(&ast::Type::Bool);
-                self.push_stmt(ir::Statement::LNeg { dst: local.clone(), val });
+                self.push_stmt(ir::Statement::LNeg {
+                    dst: local.clone(),
+                    val,
+                });
                 ir::Val::Var(local)
             }
             ast::Expr_::TernaryOp(pred, t, f) => {
@@ -547,7 +593,10 @@ impl<'s> CFGBuild<'s> {
                 let br = |e| {
                     let entry = self.new_block(Vec::new());
                     let val = self.visit_expr(e);
-                    self.push_stmt(ir::Statement::Assign { dst: var.clone(), src: val });
+                    self.push_stmt(ir::Statement::Assign {
+                        dst: var.clone(),
+                        src: val,
+                    });
                     let exit = self.pop_current_block().borrow().label;
                     (entry, exit)
                 };
@@ -566,13 +615,6 @@ impl<'s> CFGBuild<'s> {
     fn array_element_ty(t: &ast::Type) -> Option<&ast::Type> {
         match t {
             ast::Type::Array(t, _) => Some(t.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn ptr_underlying_ty(t: &ast::Type) -> Option<&ast::Type> {
-        match t {
-            ast::Type::Ptr(t) => Some(t.as_ref()),
             _ => None,
         }
     }

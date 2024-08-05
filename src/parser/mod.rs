@@ -25,10 +25,10 @@ pub fn parse(content: &String) -> Result<Program, Error> {
             err_span!(Some(SrcSpan::new(*location, *location)), "{}", e)
         }
         ParseError::UnrecognizedToken {
-            token: (l, _, r),
+            token: (l, t, r),
             expected: _,
         } => {
-            err_span!(Some(SrcSpan::new(*l, *r)), "{}", e)
+            err_span!(Some(SrcSpan::new(*l, *r)), "Unrecognized token.")
         }
         ParseError::ExtraToken { token: (l, _, r) } => {
             err_span!(Some(SrcSpan::new(*l, *r)), "{}", e)

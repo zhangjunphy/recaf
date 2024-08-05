@@ -4,6 +4,7 @@ use clap::{Parser, ValueEnum};
 pub enum Stage {
     Lex,
     Parse,
+    Cfg,
 }
 
 #[derive(Parser)]

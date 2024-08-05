@@ -7,3 +7,4 @@ pub mod semantic;
 pub mod consts;
 pub mod ir;
 pub mod cfg;
+pub mod dominator;

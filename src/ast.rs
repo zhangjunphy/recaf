@@ -129,12 +129,14 @@ pub enum Literal {
     String(String),
 }
 
-pub fn literal_type(l: &Literal) -> Type {
-    match l {
-        Literal::Int(_) => Type::Int,
-        Literal::Char(_) => Type::Char,
-        Literal::Bool(_) => Type::Bool,
-        Literal::String(s) => str_type(s),
+impl Literal {
+    pub fn ty(&self) -> Type {
+        match self {
+            Literal::Int(_) => Type::Int,
+            Literal::Char(_) => Type::Char,
+            Literal::Bool(_) => Type::Bool,
+            Literal::String(s) => str_type(s),
+        }
     }
 }
 
@@ -184,6 +186,13 @@ impl Type {
         match self {
             Type::Array(_, n) => *n,
             _ => panic!(),
+        }
+    }
+
+    pub fn ptr_ele_ty(&self) -> Option<&Type> {
+        match self {
+            Type::Ptr(t) => Some(t.as_ref()),
+            _ => None,
         }
     }
 }

@@ -465,7 +465,7 @@ impl<'p> SemanticChecker<'p> {
         e.ty = match &mut e.expr {
             Expr_::Location(l) => self.check_loc_access(l),
             Expr_::MethodCall(c) => self.check_method_call(c, &e.span),
-            Expr_::Literal(l) => literal_type(l),
+            Expr_::Literal(l) => l.ty(),
             Expr_::Len(id) => {
                 if let Some(decl) = self.find_var_decl(id) {
                     match decl.ty.clone() {

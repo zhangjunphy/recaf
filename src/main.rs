@@ -1,5 +1,6 @@
 use clap::Parser;
 use recaf::ast::ASTPrinter;
+use recaf::cfg::{draw, partial};
 use recaf::cli::{Args, Stage};
 use recaf::parser::lexer::Lexer;
 use recaf::semantic;
@@ -16,6 +17,7 @@ fn main() {
     match args.stage {
         Stage::Lex => lex(&file),
         Stage::Parse => parse(&file),
+        Stage::Cfg => cfg(&file),
     }
 }
 
@@ -63,4 +65,33 @@ fn parse(file: &String) {
         }
         Err(err) => eprintln!("{}", err),
     }
+}
+
+fn cfg(file: &String) {
+    let mut content = String::new();
+    let mut f = match File::open(file) {
+        Err(msg) => panic!("Could not open {}: {}", file, msg),
+        Ok(file) => file,
+    };
+    if let Err(msg) = f.read_to_string(&mut content) {
+        panic!("Error reading {}: {}", file, msg);
+    }
+
+    let mut program = match recaf::parser::parse(&content) {
+        Ok(program) => program,
+        Err(err) => {
+            panic!("{}", err)
+        }
+    };
+
+    let symbols = match semantic::check(&mut program) {
+        Err(errors) => panic!("{:?}", errors),
+        Ok(s) => s,
+    };
+
+    let mut build = partial::CFGBuild::new(&symbols);
+    let p = build.build(&program);
+
+    let d = draw::CFGDraw::new(p.cfgs.get("main").unwrap());
+    println!("{}", d.draw());
 }
