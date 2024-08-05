@@ -14,9 +14,9 @@ mod tests {
         if let Ok(symbols) = semantic::check(&mut program) {
             assert!(symbols.imports.contains("printf"));
             assert!(symbols.methods.contains_key("main"));
-            let symbols_0 = symbols.variables.get(&0).unwrap();
+            let symbols_0 = symbols.variables.get(&Scope::new(0)).unwrap();
             assert!(symbols_0.variables.contains_key("a"));
-            let symbols_1 = symbols.variables.get(&1).unwrap();
+            let symbols_1 = symbols.variables.get(&Scope::new(1)).unwrap();
             assert!(symbols_1.variables.contains_key("c"));
         }
     }

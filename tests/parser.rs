@@ -29,16 +29,16 @@ mod tests {
     #[test]
     fn test_parse_expr() {
         match parse_expr("22 + 0x3f").expr {
-            Expr_::BinOp(l, op, r) => {
+            Expr_::Arith(l, op, r) => {
                 assert_eq!(l.expr, Expr_::Literal(Literal::Int(22)));
-                assert_eq!(op, BinOp::Add);
+                assert_eq!(op, ArithOp::Add);
                 assert_eq!(r.expr, Expr_::Literal(Literal::Int(0x3f)));
             }
             _ => panic!(),
         }
 
         match parse_expr("- 0x3f + 33").expr {
-            Expr_::BinOp(l, op, r) => {
+            Expr_::Arith(l, op, r) => {
                 match l.expr {
                     Expr_::NNeg(e) => match e.expr {
                         Expr_::Literal(Literal::Int(0x3f)) => (),
@@ -46,7 +46,7 @@ mod tests {
                     },
                     _ => panic!(),
                 };
-                assert_eq!(op, BinOp::Add);
+                assert_eq!(op, ArithOp::Add);
                 assert_eq!(r.expr, Expr_::Literal(Literal::Int(33)));
             }
             _ => panic!(),
