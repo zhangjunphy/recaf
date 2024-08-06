@@ -15,7 +15,7 @@ use std::rc::Rc;
 pub enum Edge {
     Continue,
     JumpTrue(ir::Val),
-    JumpFalse,
+    JumpFalse(ir::Val),
 }
 
 impl fmt::Display for Edge {
@@ -23,7 +23,7 @@ impl fmt::Display for Edge {
         match self {
             Edge::Continue => f.write_str(""),
             Edge::JumpTrue(v) => f.write_str(v.to_string().as_str()),
-            Edge::JumpFalse => f.write_str(""),
+            Edge::JumpFalse(v) => write!(f, "!{}", v),
         }
     }
 }
@@ -231,7 +231,13 @@ impl<'s> CFGBuild<'s> {
         });
     }
 
-    fn new_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
+    fn new_isolated_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
+        let label = self.start_block(args);
+        self.finish_block();
+        label
+    }
+
+    fn start_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
         let id = self.new_block_id();
         assert!(self.state.borrow().current_block.borrow().is_none());
         let ast_scope = self.state.borrow().current_ast_scope;
@@ -245,12 +251,11 @@ impl<'s> CFGBuild<'s> {
         ir::Label { id }
     }
 
-    fn pop_current_block(&self) -> Rc<RefCell<ir::BasicBlock>> {
+    fn finish_block(&self) -> Rc<RefCell<ir::BasicBlock>> {
         let bb = self.state.borrow().current_block.take();
         let block = Rc::new(RefCell::new(bb.unwrap()));
         self.mut_cfg(|cfg| {
-            cfg.nodes
-                .insert(Label::Just(block.borrow().label), block.clone());
+            cfg.insert_node(Label::Just(block.borrow().label), block.clone());
         });
         block
     }
@@ -259,15 +264,13 @@ impl<'s> CFGBuild<'s> {
         let src = Label::Just(src);
         let dst = Label::Just(dst);
         self.mut_cfg(|cfg| {
-            cfg.edges.entry(src).or_insert(Vec::new()).push((dst, edge));
-            cfg.redges.entry(dst).or_insert(Vec::new()).push(src);
+            cfg.insert_edge(src, dst, Rc::new(RefCell::new(edge)));
         });
     }
 
     fn add_dummy_edge(&self, src: Label, dst: Label, edge: Edge) {
         self.mut_cfg(|cfg| {
-            cfg.edges.entry(src).or_insert(Vec::new()).push((dst, edge));
-            cfg.redges.entry(dst).or_insert(Vec::new()).push(src);
+            cfg.insert_edge(src, dst, Rc::new(RefCell::new(edge)));
         });
     }
 
@@ -283,26 +286,24 @@ impl<'s> CFGBuild<'s> {
 
     fn replace_cfg_label(&self, replace: Label, with: Label) {
         self.mut_cfg(|cfg| {
-            // Replace keys in edges and redges
-            if let Some(mut out_edges) = cfg.edges.remove(&replace) {
-                let entry = cfg.edges.entry(with).or_insert(Vec::new());
-                entry.append(&mut out_edges);
+            let in_nodes = cfg
+                .in_nodes(&replace)
+                .into_iter()
+                .map(|n| *n)
+                .collect::<Vec<_>>();
+            for i in in_nodes {
+                let ed = cfg.remove_edge(&i, &replace).unwrap();
+                cfg.insert_edge(i, with, ed);
             }
-            if let Some(mut in_edges) = cfg.redges.remove(&replace) {
-                let entry = cfg.redges.entry(with).or_insert(Vec::new());
-                entry.append(&mut in_edges);
+            let out_nodes = cfg
+                .out_nodes(&replace)
+                .into_iter()
+                .map(|n| *n)
+                .collect::<Vec<_>>();
+            for o in out_nodes {
+                let ed = cfg.remove_edge(&replace, &o).unwrap();
+                cfg.insert_edge(with, o, ed);
             }
-            // Replace values in edges and redges
-            cfg.edges.values_mut().for_each(|edge| {
-                edge.into_iter()
-                    .filter(|e| e.0 == replace)
-                    .for_each(|e| e.0 = with);
-            });
-            cfg.redges.values_mut().for_each(|edge| {
-                edge.into_iter()
-                    .filter(|e| **e == replace)
-                    .for_each(|e| *e = with);
-            });
         });
     }
 
@@ -361,17 +362,13 @@ impl<'s> CFGBuild<'s> {
     }
 
     fn visit_method(&mut self, m: &ast::MethodDecl) -> PartialCFG {
-        self.state.borrow().current_cfg.replace(Some(CFG {
-            name: m.id.id.clone(),
-            entry: Label::MethodEntry,
-            exit: Label::MethodExit,
-            nodes: HashMap::new(),
-            edges: HashMap::new(),
-            redges: HashMap::new(),
-        }));
+        self.state.borrow().current_cfg.replace(Some(CFG::new(
+            m.id.id.clone(),
+            Label::MethodEntry,
+            Label::MethodExit,
+        )));
         let (entry, exit) = self.visit_block(&m.block, &m.arguments);
-        let landing_pad = self.new_block(Vec::new());
-        self.pop_current_block();
+        let landing_pad = self.new_isolated_block(Vec::new());
 
         self.add_bb_edge(exit, landing_pad, Edge::Continue);
         self.tie_dummy_method_exit(landing_pad);
@@ -392,7 +389,7 @@ impl<'s> CFGBuild<'s> {
 
         // First build an entry block with method arguments.
         let args = method_args.into_iter().map(|a| self.new_local(a)).collect();
-        let entry = self.new_block(args);
+        let entry = self.start_block(args);
 
         // Handle variable declarations
         for fld in &b.fields {
@@ -404,7 +401,7 @@ impl<'s> CFGBuild<'s> {
             self.visit_statement(s);
         }
 
-        let exit = self.pop_current_block().borrow().label;
+        let exit = self.finish_block().borrow().label;
 
         self.state.borrow_mut().current_ast_scope = parent_scope;
 
@@ -427,17 +424,17 @@ impl<'s> CFGBuild<'s> {
             }
             ast::Stmt_::If(i) => {
                 let pred_val = self.visit_expr(&i.pred);
-                let head = self.pop_current_block().borrow().label;
+                let head = self.finish_block().borrow().label;
                 let (if_entry, if_exit) = self.visit_block(&i.if_block, &Vec::new());
                 if let Some(else_block) = &i.else_block {
                     let (else_entry, else_exit) = self.visit_block(else_block, &Vec::new());
-                    let landing_pad = self.new_block(Vec::new());
-                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val));
-                    self.add_bb_edge(head, else_entry, Edge::JumpFalse);
+                    let landing_pad = self.start_block(Vec::new());
+                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val.clone()));
+                    self.add_bb_edge(head, else_entry, Edge::JumpFalse(pred_val));
                     self.add_bb_edge(if_exit, landing_pad, Edge::Continue);
                     self.add_bb_edge(else_exit, landing_pad, Edge::Continue);
                 } else {
-                    let landing_pad = self.new_block(Vec::new());
+                    let landing_pad = self.start_block(Vec::new());
                     self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val));
                     self.add_bb_edge(if_exit, landing_pad, Edge::Continue);
                     self.add_bb_edge(head, landing_pad, Edge::Continue);
@@ -466,39 +463,39 @@ impl<'s> CFGBuild<'s> {
                 self.visit_statement(&w);
             }
             ast::Stmt_::While(w) => {
-                let head = self.pop_current_block().borrow().label;
+                let head = self.finish_block().borrow().label;
 
-                self.new_block(Vec::new());
-                let pred_bb = self.pop_current_block().borrow().label;
+                self.start_block(Vec::new());
                 let pred_val = self.visit_expr(&w.pred);
+                let pred_bb = self.finish_block().borrow().label;
 
                 let (body_entry, body_exit) = self.visit_block(&w.block, &Vec::new());
 
-                let landing_pad = self.new_block(Vec::new());
+                let landing_pad = self.start_block(Vec::new());
 
                 self.add_bb_edge(head, pred_bb, Edge::Continue);
-                self.add_bb_edge(pred_bb, body_entry, Edge::JumpTrue(pred_val));
+                self.add_bb_edge(pred_bb, body_entry, Edge::JumpTrue(pred_val.clone()));
                 self.add_bb_edge(body_exit, pred_bb, Edge::Continue);
-                self.add_bb_edge(pred_bb, landing_pad, Edge::JumpFalse);
+                self.add_bb_edge(pred_bb, landing_pad, Edge::JumpFalse(pred_val));
 
                 self.tie_dummy_loop_edges(pred_bb, landing_pad);
             }
             ast::Stmt_::Return(e) => {
                 let val = e.as_ref().map(|e| self.visit_expr(&e));
                 self.push_stmt(ir::Statement::Return(val));
-                let exit = self.pop_current_block().borrow().label;
+                let exit = self.finish_block().borrow().label;
                 // Create a unreachable block.
-                self.new_block(Vec::new());
+                self.start_block(Vec::new());
                 self.add_dummy_edge(Label::Just(exit), Label::MethodExit, Edge::Continue);
             }
             ast::Stmt_::Break => {
-                let exit = self.pop_current_block().borrow().label;
-                self.new_block(Vec::new());
+                let exit = self.finish_block().borrow().label;
+                self.start_block(Vec::new());
                 self.add_dummy_edge(Label::Just(exit), Label::LoopExit, Edge::Continue);
             }
             ast::Stmt_::Continue => {
-                let exit = self.pop_current_block().borrow().label;
-                self.new_block(Vec::new());
+                let exit = self.finish_block().borrow().label;
+                self.start_block(Vec::new());
                 self.add_dummy_edge(Label::Just(exit), Label::LoopPred, Edge::Continue);
             }
         }
@@ -589,22 +586,22 @@ impl<'s> CFGBuild<'s> {
                 // Build a control flow for choice op
                 let pred_val = self.visit_expr(&pred);
                 let var = self.new_temp(&expr.ty);
-                let head = self.pop_current_block().borrow().label;
+                let head = self.finish_block().borrow().label;
                 let br = |e| {
-                    let entry = self.new_block(Vec::new());
+                    let entry = self.start_block(Vec::new());
                     let val = self.visit_expr(e);
                     self.push_stmt(ir::Statement::Assign {
                         dst: var.clone(),
                         src: val,
                     });
-                    let exit = self.pop_current_block().borrow().label;
+                    let exit = self.finish_block().borrow().label;
                     (entry, exit)
                 };
                 let (t_entry, t_exit) = br(t);
                 let (f_entry, f_exit) = br(f);
-                let landing_pad = self.new_block(Vec::new());
-                self.add_bb_edge(head, t_entry, Edge::JumpTrue(pred_val));
-                self.add_bb_edge(head, f_entry, Edge::JumpFalse);
+                let landing_pad = self.start_block(Vec::new());
+                self.add_bb_edge(head, t_entry, Edge::JumpTrue(pred_val.clone()));
+                self.add_bb_edge(head, f_entry, Edge::JumpFalse(pred_val));
                 self.add_bb_edge(t_exit, landing_pad, Edge::Continue);
                 self.add_bb_edge(f_exit, landing_pad, Edge::Continue);
                 ir::Val::Var(var)

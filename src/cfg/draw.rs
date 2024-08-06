@@ -28,10 +28,12 @@ where
     }
 
     pub fn draw(&self) -> String {
-        let mut g = graph!(strict di id!("");
-                           node!("node";
-                                 NodeAttributes::shape(shape::box_)
-                           )
+        let mut g = graph!(
+            di id!("");
+            node!(
+                "node";
+                NodeAttributes::shape(shape::box_)
+            )
         );
         g.add_stmt(Stmt::Subgraph(self.draw_cfg()));
         g.print(&mut PrinterContext::default())
@@ -39,12 +41,12 @@ where
 
     fn draw_cfg(&self) -> Subgraph {
         let mut stmts = Vec::new();
-        for (ti, node) in &self.cfg.nodes {
+        for (ti, node) in self.cfg.nodes() {
             stmts.push(self.draw_node(ti, node));
         }
-        for (src, dests) in &self.cfg.edges {
+        for (src, dests) in self.cfg.edges() {
             for (dst, edge) in dests {
-                stmts.push(self.draw_edge(src, dst, edge));
+                stmts.push(self.draw_edge(src, dst, &edge.borrow()));
             }
         }
         Subgraph {
@@ -54,16 +56,17 @@ where
     }
 
     fn draw_edge(&self, src: &Ti, dst: &Ti, e: &Te) -> Stmt {
-        Stmt::Edge(if dst > src {
-            edge!(node_id!(src.to_string()) => node_id!(dst.to_string());
-                  EdgeAttributes::label(format!("\"{}\"", e))
-            )
+        let mut edge = if src <= dst {
+            edge!(node_id!(src.to_string()) => node_id!(dst.to_string()))
         } else {
-            edge!(node_id!(dst.to_string()) => node_id!(src.to_string());
-                  EdgeAttributes::label(format!("\"{}\"", e)),
-                  EdgeAttributes::dir(dir::back)
+            edge!(
+                node_id!(dst.to_string()) => node_id!(src.to_string());
+                EdgeAttributes::dir(dir::back)
             )
-        })
+        };
+        edge.attributes
+            .push(EdgeAttributes::label(format!("\"{}\"", e)));
+        Stmt::Edge(edge)
     }
 
     fn draw_node(&self, idx: &Ti, n: &Rc<RefCell<Tn>>) -> Stmt {

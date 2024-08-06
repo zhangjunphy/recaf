@@ -1,3 +1,5 @@
+//! Type inference for expressions and semantic checks.
+
 use crate::ast::*;
 use crate::consts;
 use crate::error::Error;
