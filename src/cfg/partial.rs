@@ -154,7 +154,7 @@ pub struct BuildState {
 pub struct CFGBuild<'s> {
     pub symbols: &'s semantic::ProgramSymbols,
     pub state: RefCell<BuildState>,
-    pub program: Program,
+    pub program: Rc<RefCell<Program>>,
 }
 
 impl<'s> CFGBuild<'s> {
@@ -168,17 +168,17 @@ impl<'s> CFGBuild<'s> {
                 current_block: RefCell::new(None),
                 var_cache: VarCache::new(),
             }),
-            program: Program {
+            program: Rc::new(RefCell::new(Program {
                 imports: Vec::new(),
                 globals: Vec::new(),
                 cfgs: HashMap::new(),
-            },
+            })),
         }
     }
 
-    pub fn build(&mut self, p: &ast::Program) -> &Program {
+    pub fn build(&mut self, p: &ast::Program) -> Rc<RefCell<Program>> {
         self.visit_program(p);
-        &self.program
+        self.program.clone()
     }
 
     fn new_block_id(&self) -> usize {
@@ -346,18 +346,18 @@ impl<'s> CFGBuild<'s> {
     fn visit_program(&mut self, p: &ast::Program) {
         // Handle imports
         for imp in &p.imports {
-            self.program.imports.push(imp.id.id.clone());
+            self.program.borrow_mut().imports.push(imp.id.id.clone());
         }
 
         // Handle globals
         for fld in &p.fields {
-            self.program.globals.push(self.new_global(fld));
+            self.program.borrow_mut().globals.push(self.new_global(fld));
         }
 
         // Build cfg for each mehtod
         for m in &p.methods {
             let cfg = self.visit_method(m);
-            self.program.cfgs.insert(m.id.id.clone(), cfg);
+            self.program.borrow_mut().cfgs.insert(m.id.id.clone(), cfg);
         }
     }
 

@@ -4,7 +4,7 @@ use crate::ir;
 
 pub trait CFGOptimizer<Ti>
 where
-    Ti: Ord,
+    Ti: Ord + Clone,
 {
     fn run(&mut self, cfg: &mut CFG<Ti, ir::BasicBlock, partial::Edge>);
 }
@@ -12,9 +12,9 @@ where
 pub struct RemoveEmptyNodes {}
 
 impl RemoveEmptyNodes {
-    fn find_removable_empty_nodes<Ti: Ord>(
+    fn find_removable_empty_nodes<Ti: Ord + Clone>(
         cfg: &CFG<Ti, ir::BasicBlock, partial::Edge>,
-    ) -> Option<(&Ti, (&Ti, &Ti))> {
+    ) -> Option<(Ti, (Ti, Ti))> {
         let empty_nodes = cfg
             .nodes()
             .iter()
@@ -31,7 +31,7 @@ impl RemoveEmptyNodes {
                 let i = in_nodes[0];
                 let ed = cfg.edge_data(i, n);
                 if matches!(*ed.unwrap().borrow(), partial::Edge::Continue) {
-                    return Some((n, (i, n)));
+                    return Some((n.clone(), (i.clone(), n.clone())));
                 }
             }
 
@@ -40,7 +40,7 @@ impl RemoveEmptyNodes {
                 let o = out_nodes[0];
                 let ed = cfg.edge_data(n, o);
                 if matches!(*ed.unwrap().borrow(), partial::Edge::Continue) {
-                    return Some((n, (n, o)));
+                    return Some((n.clone(), (n.clone(), o.clone())));
                 }
             }
         }
@@ -50,9 +50,33 @@ impl RemoveEmptyNodes {
 
 impl<Ti> CFGOptimizer<Ti> for RemoveEmptyNodes
 where
-    Ti: Ord,
+    Ti: Ord + Clone,
 {
     fn run(&mut self, cfg: &mut CFG<Ti, ir::BasicBlock, partial::Edge>) {
-        while let Some((n, pair)) = Self::find_removable_empty_nodes(cfg) {}
+        while let Some((n, pair)) = Self::find_removable_empty_nodes(cfg) {
+            if n == pair.0 {
+                let in_nodes = cfg
+                    .in_nodes(&n)
+                    .into_iter()
+                    .map(|n| n.clone())
+                    .collect::<Vec<_>>();
+                for i in in_nodes {
+                    let ed = cfg.remove_edge(&i, &n).unwrap();
+                    cfg.insert_edge(i, pair.1.clone(), ed);
+                }
+            } else {
+                // n == pair.1
+                let out_nodes = cfg
+                    .out_nodes(&n)
+                    .into_iter()
+                    .map(|n| n.clone())
+                    .collect::<Vec<_>>();
+                for o in out_nodes {
+                    let ed = cfg.remove_edge(&n, &o).unwrap();
+                    cfg.insert_edge(pair.0.clone(), o, ed);
+                }
+            }
+            cfg.remove_node(&n);
+        }
     }
 }

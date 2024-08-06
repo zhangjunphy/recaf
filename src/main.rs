@@ -1,6 +1,6 @@
 use clap::Parser;
 use recaf::ast::ASTPrinter;
-use recaf::cfg::{draw, partial};
+use recaf::cfg::{draw, optimize, optimize::CFGOptimizer, partial};
 use recaf::cli::{Args, Stage};
 use recaf::parser::lexer::Lexer;
 use recaf::semantic;
@@ -92,6 +92,12 @@ fn cfg(file: &String) {
     let mut build = partial::CFGBuild::new(&symbols);
     let p = build.build(&program);
 
-    let d = draw::CFGDraw::new(p.cfgs.get("main").unwrap());
-    println!("{}", d.draw());
+    {
+        let pb = p.borrow();
+        let d = draw::CFGDraw::new(pb.cfgs.get("main").unwrap());
+        println!("{}", d.draw());
+    }
+
+    let mut optimizer = optimize::RemoveEmptyNodes {};
+    optimizer.run(p.borrow_mut().cfgs.get_mut("main").unwrap());
 }
