@@ -55,6 +55,13 @@ impl Val {
             Val::Imm(l) => l.ty(),
         }
     }
+
+    pub fn get_var(&self) -> Option<Rc<Var>> {
+        match self {
+            Val::Var(v) => Some(v.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Val {
@@ -166,6 +173,108 @@ pub enum Statement {
     Br(Branch),
 }
 
+impl Statement {
+    pub fn read_vars(&self) -> Vec<Rc<Var>> {
+        let reads = |val: &Val| val.get_var().into_iter().collect();
+        match &self {
+            Statement::Assign { dst: _, src } => reads(src),
+            Statement::Call {
+                dst: _,
+                method: _,
+                arguments,
+            } => arguments.into_iter().flat_map(|a| a.get_var()).collect(),
+            Statement::Return(r) => r.into_iter().flat_map(|v| v.get_var()).collect(),
+            Statement::Alloca {
+                dst: _,
+                ty: _,
+                size: _,
+            } => Vec::new(),
+            Statement::Load { dst: _, ptr } => reads(ptr),
+            Statement::Store { ptr: _, src } => reads(src),
+            Statement::Arith {
+                dst: _,
+                op: _,
+                l,
+                r,
+            } => {
+                let mut lreads = reads(l);
+                let mut rreads = reads(r);
+                lreads.append(&mut rreads);
+                lreads
+            }
+            Statement::Cmp {
+                dst: _,
+                op: _,
+                l,
+                r,
+            } => {
+                let mut lreads = reads(l);
+                let mut rreads = reads(r);
+                lreads.append(&mut rreads);
+                lreads
+            }
+            Statement::Cond {
+                dst: _,
+                op: _,
+                l,
+                r,
+            } => {
+                let mut lreads = reads(l);
+                let mut rreads = reads(r);
+                lreads.append(&mut rreads);
+                lreads
+            }
+            Statement::NNeg { dst: _, val } => reads(val),
+            Statement::LNeg { dst: _, val } => reads(val),
+            Statement::Br(Branch::UnCon { label: _ }) => Vec::new(),
+            Statement::Br(Branch::Con {
+                pred,
+                label_true: _,
+                label_false: _,
+            }) => reads(pred),
+        }
+    }
+    pub fn write_to_var(&self) -> Option<Rc<Var>> {
+        match &self {
+            Statement::Assign { dst, src: _ } => Some(dst.clone()),
+            Statement::Call {
+                dst,
+                method: _,
+                arguments: _,
+            } => dst.clone(),
+            Statement::Return(_) => None,
+            Statement::Alloca {
+                dst,
+                ty: _,
+                size: _,
+            } => Some(dst.clone()),
+            Statement::Load { dst, ptr: _ } => Some(dst.clone()),
+            Statement::Store { ptr: _, src: _ } => None,
+            Statement::Arith {
+                dst,
+                op: _,
+                l: _,
+                r: _,
+            } => Some(dst.clone()),
+            Statement::Cmp {
+                dst,
+                op: _,
+                l: _,
+                r: _,
+            } => Some(dst.clone()),
+            Statement::Cond {
+                dst,
+                op: _,
+                l: _,
+                r: _,
+            } => Some(dst.clone()),
+            Statement::NNeg { dst, val: _ } => Some(dst.clone()),
+            Statement::LNeg { dst, val: _ } => Some(dst.clone()),
+            Statement::Br(_) => None,
+        }
+    }
+}
+
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -222,6 +331,16 @@ pub struct BasicBlock {
 impl BasicBlock {
     pub fn push_stmt(&mut self, stmt: Statement) {
         self.statements.push(stmt)
+    }
+
+    pub fn read_vars(&self) -> Vec<Rc<Var>> {
+        self.statements.iter().flat_map(|s| s.read_vars()).collect()
+    }
+    pub fn write_vars(&self) -> Vec<Rc<Var>> {
+        self.statements
+            .iter()
+            .flat_map(|s| s.write_to_var())
+            .collect()
     }
 }
 

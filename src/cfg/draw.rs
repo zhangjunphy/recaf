@@ -5,12 +5,11 @@ use graphviz_rust::dot_structures::*;
 use graphviz_rust::printer::{DotPrinter, PrinterContext};
 use std::cell::RefCell;
 use std::fmt::Display;
-use std::hash::Hash;
 use std::rc::Rc;
 
 pub struct CFGDraw<'c, Ti, Tn, Te>
 where
-    Ti: Hash + Display + Ord + Eq,
+    Ti: Display + Ord + Clone,
     Tn: Display,
     Te: Display,
 {
@@ -19,7 +18,7 @@ where
 
 impl<'c, Ti, Tn, Te> CFGDraw<'c, Ti, Tn, Te>
 where
-    Ti: Hash + Display + Ord + Eq,
+    Ti: Display + Ord + Clone,
     Tn: Display,
     Te: Display,
 {

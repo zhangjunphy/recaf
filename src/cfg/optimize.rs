@@ -1,19 +1,18 @@
 use super::def::*;
-use super::partial;
 use crate::ir;
 
 pub trait CFGOptimizer<Ti>
 where
     Ti: Ord + Clone,
 {
-    fn run(&mut self, cfg: &mut CFG<Ti, ir::BasicBlock, partial::Edge>);
+    fn run(&mut self, cfg: &mut CFG<Ti, ir::BasicBlock, Edge>);
 }
 
 pub struct RemoveEmptyNodes {}
 
 impl RemoveEmptyNodes {
     fn find_removable_empty_nodes<Ti: Ord + Clone>(
-        cfg: &CFG<Ti, ir::BasicBlock, partial::Edge>,
+        cfg: &CFG<Ti, ir::BasicBlock, Edge>,
     ) -> Option<(Ti, (Ti, Ti))> {
         let empty_nodes = cfg
             .nodes()
@@ -26,11 +25,15 @@ impl RemoveEmptyNodes {
 
         // Currently we can only remove nodes with one incoming or outgoing Edge::Continue.
         for n in empty_nodes {
+            if *n == cfg.entry || *n == cfg.exit {
+                continue;
+            }
+
             let in_nodes = cfg.in_nodes(n);
             if in_nodes.len() == 1 {
                 let i = in_nodes[0];
                 let ed = cfg.edge_data(i, n);
-                if matches!(*ed.unwrap().borrow(), partial::Edge::Continue) {
+                if matches!(*ed.unwrap().borrow(), Edge::Continue) {
                     return Some((n.clone(), (i.clone(), n.clone())));
                 }
             }
@@ -39,7 +42,7 @@ impl RemoveEmptyNodes {
             if out_nodes.len() == 1 {
                 let o = out_nodes[0];
                 let ed = cfg.edge_data(n, o);
-                if matches!(*ed.unwrap().borrow(), partial::Edge::Continue) {
+                if matches!(*ed.unwrap().borrow(), Edge::Continue) {
                     return Some((n.clone(), (n.clone(), o.clone())));
                 }
             }
@@ -52,7 +55,7 @@ impl<Ti> CFGOptimizer<Ti> for RemoveEmptyNodes
 where
     Ti: Ord + Clone,
 {
-    fn run(&mut self, cfg: &mut CFG<Ti, ir::BasicBlock, partial::Edge>) {
+    fn run(&mut self, cfg: &mut CFG<Ti, ir::BasicBlock, Edge>) {
         while let Some((n, pair)) = Self::find_removable_empty_nodes(cfg) {
             if n == pair.0 {
                 let in_nodes = cfg

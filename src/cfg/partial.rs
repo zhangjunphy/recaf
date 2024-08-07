@@ -2,7 +2,7 @@
 //! It is not a SSA yet. And basicblock parameters introduced by control flows are left empty.
 
 use crate::ast;
-use crate::cfg::def::CFG;
+use crate::cfg::def::{Edge, CFG};
 use crate::consts;
 use crate::ir;
 use crate::semantic;
@@ -11,22 +11,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-
-pub enum Edge {
-    Continue,
-    JumpTrue(ir::Val),
-    JumpFalse(ir::Val),
-}
-
-impl fmt::Display for Edge {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Edge::Continue => f.write_str(""),
-            Edge::JumpTrue(v) => f.write_str(v.to_string().as_str()),
-            Edge::JumpFalse(v) => write!(f, "!{}", v),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Label {
@@ -77,10 +61,6 @@ impl VarCache {
 
     fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&Rc<ir::Var>> {
         self.symbol_to_var.get(&(ast_scope, symbol.to_string()))
-    }
-
-    fn lookup_ast_scope(&self, v: Rc<ir::Var>) -> Option<&ast::Scope> {
-        self.var_to_symbol.get(&v).map(|e| &e.0)
     }
 
     fn new_var_id(&mut self) -> usize {
@@ -151,15 +131,15 @@ pub struct BuildState {
     var_cache: VarCache,
 }
 
-pub struct CFGBuild<'s> {
+pub struct CFGPartialBuild<'s> {
     pub symbols: &'s semantic::ProgramSymbols,
     pub state: RefCell<BuildState>,
     pub program: Rc<RefCell<Program>>,
 }
 
-impl<'s> CFGBuild<'s> {
+impl<'s> CFGPartialBuild<'s> {
     pub fn new(symbols: &'s semantic::ProgramSymbols) -> Self {
-        CFGBuild {
+        CFGPartialBuild {
             symbols,
             state: RefCell::new(BuildState {
                 next_bb_id: 1, // reserve block 0 for global variables
@@ -329,18 +309,13 @@ impl<'s> CFGBuild<'s> {
             if let Some(v) = var {
                 return v;
             } else {
-                match self.symbols.variables.get(&scope).unwrap().parent_scope {
-                    Some(s) => scope = s,
+                match self.symbols.find_parent_scope(&scope) {
+                    Some(s) => scope = *s,
                     None => break,
                 }
             }
         }
         panic!()
-    }
-
-    fn find_decl(&self, id: &str) -> Option<&ast::FieldDecl> {
-        let scope = self.state.borrow().current_ast_scope;
-        self.symbols.find_var_decl(&scope, id)
     }
 
     fn visit_program(&mut self, p: &ast::Program) {

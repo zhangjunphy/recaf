@@ -51,6 +51,10 @@ impl ProgramSymbols {
         self.variables.get(&parent)
     }
 
+    pub fn find_parent_scope(&self, scope: &Scope) -> Option<&Scope> {
+        self.find_parent(scope).map(|vt| &vt.scope)
+    }
+
     pub fn find_var_decl<'p>(&'p self, scope: &Scope, var: &str) -> Option<&'p FieldDecl> {
         let lookup_non_recur = |scope: &Scope, var: &str| {
             let table = self.variables.get(scope)?;
@@ -187,7 +191,8 @@ impl SymbolTableBuilder {
             self.symbols.add_import(imp)?;
         }
         for var in &program.fields {
-            self.symbols.add_variable(&Scope::new(consts::ROOT_SCOPE_ID), var)?;
+            self.symbols
+                .add_variable(&Scope::new(consts::ROOT_SCOPE_ID), var)?;
         }
         for method in &program.methods {
             self.symbols.add_method(method)?;
@@ -418,10 +423,7 @@ impl<'p> SemanticChecker<'p> {
                 let expected = &decl.arguments.get(i).unwrap().ty;
                 let ty = self.check_expr(expr);
                 if ty != *expected {
-                    self.err(err_span!(
-                        expr.span,
-                        "{expected} expected, but {ty} given.",
-                    ));
+                    self.err(err_span!(expr.span, "{expected} expected, but {ty} given.",));
                 }
             }
             return decl.ty.clone();
@@ -489,17 +491,17 @@ impl<'p> SemanticChecker<'p> {
                 self.check_expr_type(l, &Type::Int);
                 self.check_expr_type(r, &Type::Int);
                 Type::Int
-            },
+            }
             Expr_::Cmp(l, _, r) => {
                 self.check_expr_type(l, &Type::Int);
                 self.check_expr_type(r, &Type::Int);
                 Type::Bool
-            },
+            }
             Expr_::Cond(l, _, r) => {
                 self.check_expr_type(l, &Type::Bool);
                 self.check_expr_type(r, &Type::Bool);
                 Type::Bool
-            },
+            }
             Expr_::NNeg(e) => {
                 self.check_expr_type(e, &Type::Int);
                 Type::Int

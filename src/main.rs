@@ -89,15 +89,13 @@ fn cfg(file: &String) {
         Ok(s) => s,
     };
 
-    let mut build = partial::CFGBuild::new(&symbols);
+    let mut build = partial::CFGPartialBuild::new(&symbols);
     let p = build.build(&program);
-
-    {
-        let pb = p.borrow();
-        let d = draw::CFGDraw::new(pb.cfgs.get("main").unwrap());
-        println!("{}", d.draw());
-    }
 
     let mut optimizer = optimize::RemoveEmptyNodes {};
     optimizer.run(p.borrow_mut().cfgs.get_mut("main").unwrap());
+
+    let pb = p.borrow();
+    let d = draw::CFGDraw::new(pb.cfgs.get("main").unwrap());
+    println!("{}", d.draw());
 }

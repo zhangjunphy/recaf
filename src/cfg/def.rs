@@ -4,10 +4,11 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::fmt;
 
 pub struct CFG<Ti, Tn, Te>
 where
-    Ti: Ord,
+    Ti: Ord + Clone,
 {
     pub name: String,
     pub entry: Ti,
@@ -19,7 +20,7 @@ where
 
 impl<Ti, Tn, Te> CFG<Ti, Tn, Te>
 where
-    Ti: Ord,
+    Ti: Ord + Clone,
 {
     pub fn new(name: String, entry: Ti, exit: Ti) -> Self {
         CFG {
@@ -84,6 +85,8 @@ where
     }
 
     pub fn remove_edge(&mut self, src: &Ti, dst: &Ti) -> Option<Rc<RefCell<Te>>> {
+        let redges = self.redges.get_mut(dst)?;
+        redges.remove(src);
         let edges = self.edges.get_mut(src)?;
         edges.remove(dst)
     }
@@ -93,9 +96,8 @@ where
     }
 
     pub fn insert_edge(&mut self, src: Ti, dst: Ti, e: Rc<RefCell<Te>>) -> Option<Rc<RefCell<Te>>> {
-        if let Some(redges) = self.redges.get_mut(&dst) {
-            redges.remove(&src);
-        }
+        let redges = self.redges.entry(dst.clone()).or_insert(BTreeSet::new());
+        redges.insert(src.clone());
         let edges = self.edges.entry(src).or_insert(BTreeMap::new());
         edges.insert(dst, e)
     }
@@ -109,8 +111,24 @@ where
     }
 }
 
+pub enum Edge {
+    Continue,
+    JumpTrue(ir::Val),
+    JumpFalse(ir::Val),
+}
+
+impl fmt::Display for Edge {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Edge::Continue => f.write_str(""),
+            Edge::JumpTrue(v) => f.write_str(v.to_string().as_str()),
+            Edge::JumpFalse(v) => write!(f, "!{}", v),
+        }
+    }
+}
+
 pub struct Program {
     pub imports: Vec<String>,
     pub globals: Vec<Rc<ir::Var>>,
-    pub cfgs: HashMap<String, CFG<ir::Label, ir::BasicBlock, ir::Branch>>,
+    pub cfgs: HashMap<String, CFG<ir::Label, ir::BasicBlock, Edge>>,
 }
