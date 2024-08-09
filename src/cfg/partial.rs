@@ -2,12 +2,14 @@
 //! It is not a SSA yet. And basicblock parameters introduced by control flows are left empty.
 
 use crate::ast;
+use crate::cfg::def;
 use crate::cfg::def::{Edge, CFG};
 use crate::consts;
 use crate::ir;
 use crate::semantic;
 use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -19,6 +21,15 @@ pub enum Label {
     LoopExit,
     MethodEntry,
     MethodExit,
+}
+
+impl Label {
+    pub fn get_label(&self) -> ir::Label {
+        match &self {
+            Label::Just(l) => *l,
+            _ => panic!(),
+        }
+    }
 }
 
 impl fmt::Display for Label {
@@ -39,6 +50,22 @@ pub struct Program {
     pub imports: Vec<String>,
     pub globals: Vec<Rc<ir::Var>>,
     pub cfgs: HashMap<String, PartialCFG>,
+}
+
+impl Program {
+    pub fn new() -> Self {
+        Program {
+            imports: Vec::new(),
+            globals: Vec::new(),
+            cfgs: HashMap::new(),
+        }
+    }
+}
+
+impl Default for Program {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub struct VarCache {
@@ -134,7 +161,50 @@ pub struct BuildState {
 pub struct CFGPartialBuild<'s> {
     pub symbols: &'s semantic::ProgramSymbols,
     pub state: RefCell<BuildState>,
-    pub program: Rc<RefCell<Program>>,
+    pub program: RefCell<Program>,
+}
+
+fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
+    let out_nodes = cfg.out_nodes(n);
+    if out_nodes.len() == 1 {
+        let bb_next = out_nodes[0].get_label();
+        let edge = cfg.edge_data(n, out_nodes[0]).unwrap();
+        assert!(matches!(*edge.borrow(), Edge::Continue));
+        Some(ir::Branch::UnCon { label: bb_next })
+    } else if out_nodes.len() == 2 {
+        let mut t_label = None;
+        let mut f_label = None;
+        let mut t_var = None;
+        let mut f_var = None;
+        for o in &out_nodes {
+            let edge = cfg.edge_data(n, o).unwrap();
+            match &*edge.borrow() {
+                Edge::JumpTrue(v) => {
+                    t_label = Some(*n);
+                    t_var = v.get_var();
+                }
+                Edge::JumpFalse(v) => {
+                    f_label = Some(*n);
+                    f_var = v.get_var();
+                }
+                _ => {
+                    panic!("Invalid branching in CFG.")
+                }
+            }
+        }
+        if t_var != f_var {
+            panic!("Branching in CFG has inconsistant variables.")
+        }
+        Some(ir::Branch::Con {
+            pred: ir::Val::Var(t_var.unwrap()),
+            label_true: t_label.unwrap().get_label(),
+            label_false: f_label.unwrap().get_label(),
+        })
+    } else if out_nodes.len() > 2 {
+        panic!("Basic block should have 2 out edges at most.")
+    } else {
+        None
+    }
 }
 
 impl<'s> CFGPartialBuild<'s> {
@@ -148,17 +218,46 @@ impl<'s> CFGPartialBuild<'s> {
                 current_block: RefCell::new(None),
                 var_cache: VarCache::new(),
             }),
-            program: Rc::new(RefCell::new(Program {
-                imports: Vec::new(),
-                globals: Vec::new(),
-                cfgs: HashMap::new(),
-            })),
+            program: RefCell::new(Program::new()),
         }
     }
 
-    pub fn build(&mut self, p: &ast::Program) -> Rc<RefCell<Program>> {
+    pub fn build(&mut self, p: &ast::Program) -> def::Program {
         self.visit_program(p);
-        self.program.clone()
+        let p = self.program.take();
+
+        let mut res = def::Program {
+            imports: p.imports,
+            globals: p.globals,
+            cfgs: HashMap::new(),
+        };
+
+        // To process p into the final cfg form, we
+        // 1. Add Br statement to end of all basic blocks with outgoing edges
+        // 2. Convert partial::Label to ir::Label directly as they should all have be filled.
+        for (name, partial_cfg) in &p.cfgs {
+            let mut full_cfg = CFG::<ir::Label, ir::BasicBlock, def::Edge>::new(
+                partial_cfg.name.clone(),
+                partial_cfg.entry.get_label(),
+                partial_cfg.exit.get_label(),
+            );
+
+            for (label, bb) in partial_cfg.nodes() {
+                let mut partial_bb = bb.take();
+                if let Some(br) = node_br(partial_cfg, label) {
+                    partial_bb.push_stmt(ir::Statement::Br(br));
+                }
+                full_cfg.insert_node(label.get_label(), Rc::new(RefCell::new(partial_bb)));
+                for dst in partial_cfg.out_nodes(label) {
+                    let edge = partial_cfg.edge_data(label, dst).unwrap();
+                    full_cfg.insert_edge(label.get_label(), dst.get_label(), edge.clone());
+                }
+            }
+
+            res.cfgs.insert(name.clone(), full_cfg);
+        }
+
+        res
     }
 
     fn new_block_id(&self) -> usize {

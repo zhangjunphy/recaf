@@ -329,6 +329,15 @@ pub struct BasicBlock {
 }
 
 impl BasicBlock {
+    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<Rc<Var>>) -> Self {
+        BasicBlock {
+            label,
+            ast_scope,
+            args,
+            statements: Vec::new(),
+        }
+    }
+
     pub fn push_stmt(&mut self, stmt: Statement) {
         self.statements.push(stmt)
     }
@@ -341,6 +350,12 @@ impl BasicBlock {
             .iter()
             .flat_map(|s| s.write_to_var())
             .collect()
+    }
+}
+
+impl Default for BasicBlock {
+    fn default() -> Self {
+        BasicBlock::new(Label::new(0), ast::Scope::new(0), vec![])
     }
 }
 

@@ -183,7 +183,7 @@ impl DominanceFrontier {
         &self.root
     }
 
-    pub fn get(&self, n: &ir::Label) -> Option<&Vec<ir::Label>> {
+    pub fn get_frontier(&self, n: &ir::Label) -> Option<&Vec<ir::Label>> {
         self.nodes.get(n)
     }
 }
