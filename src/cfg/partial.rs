@@ -9,7 +9,6 @@ use crate::ir;
 use crate::semantic;
 use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
@@ -48,7 +47,7 @@ type PartialCFG = CFG<Label, ir::BasicBlock, Edge>;
 
 pub struct Program {
     pub imports: Vec<String>,
-    pub globals: Vec<Rc<ir::Var>>,
+    pub globals: Vec<Rc<ir::VVar>>,
     pub cfgs: HashMap<String, PartialCFG>,
 }
 
@@ -69,9 +68,9 @@ impl Default for Program {
 }
 
 pub struct VarCache {
-    pub var_to_symbol: HashMap<Rc<ir::Var>, (ast::Scope, String)>,
-    pub symbol_to_var: HashMap<(ast::Scope, String), Rc<ir::Var>>,
-    pub vars: Vec<Rc<ir::Var>>,
+    pub var_to_symbol: HashMap<Rc<ir::VVar>, (ast::Scope, String)>,
+    pub symbol_to_var: HashMap<(ast::Scope, String), Rc<ir::VVar>>,
+    pub vars: Vec<Rc<ir::VVar>>,
 
     pub next_var_id: usize,
 }
@@ -86,7 +85,7 @@ impl VarCache {
         }
     }
 
-    fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&Rc<ir::Var>> {
+    fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&Rc<ir::VVar>> {
         self.symbol_to_var.get(&(ast_scope, symbol.to_string()))
     }
 
@@ -102,15 +101,18 @@ impl VarCache {
         ty: ast::Type,
         decl: Option<ast::FieldDecl>,
         span: Option<SrcSpan>,
-    ) -> Rc<ir::Var> {
+    ) -> Rc<ir::VVar> {
         let id = self.new_var_id();
-        let var = Rc::new(ir::Var {
-            id,
-            ty,
-            decl: decl.clone(),
-            span,
-            locality: ir::Locality::Local,
-        });
+        let var = Rc::new(ir::VVar::new(
+            ir::Var {
+                id,
+                ty,
+                decl: decl.clone(),
+                span,
+                locality: ir::Locality::Local,
+            },
+            0,
+        ));
         if let Some(d) = &decl {
             self.var_to_symbol
                 .insert(var.clone(), (ast_scope, d.id.id.clone()));
@@ -126,15 +128,18 @@ impl VarCache {
         ty: ast::Type,
         decl: Option<ast::FieldDecl>,
         span: Option<SrcSpan>,
-    ) -> Rc<ir::Var> {
+    ) -> Rc<ir::VVar> {
         let id = self.new_var_id();
-        let var = Rc::new(ir::Var {
-            id,
-            ty,
-            decl: decl.clone(),
-            span,
-            locality: ir::Locality::Global,
-        });
+        let var = Rc::new(ir::VVar::new(
+            ir::Var {
+                id,
+                ty,
+                decl: decl.clone(),
+                span,
+                locality: ir::Locality::Global,
+            },
+            0,
+        ));
         if let Some(d) = &decl {
             self.var_to_symbol.insert(
                 var.clone(),
@@ -310,13 +315,13 @@ impl<'s> CFGPartialBuild<'s> {
         });
     }
 
-    fn new_isolated_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
+    fn new_isolated_block(&self, args: Vec<Rc<ir::VVar>>) -> ir::Label {
         let label = self.start_block(args);
         self.finish_block();
         label
     }
 
-    fn start_block(&self, args: Vec<Rc<ir::Var>>) -> ir::Label {
+    fn start_block(&self, args: Vec<Rc<ir::VVar>>) -> ir::Label {
         let id = self.new_block_id();
         assert!(self.state.borrow().current_block.borrow().is_none());
         let ast_scope = self.state.borrow().current_ast_scope;
@@ -386,21 +391,21 @@ impl<'s> CFGPartialBuild<'s> {
         });
     }
 
-    fn new_local(&self, fld: &ast::FieldDecl) -> Rc<ir::Var> {
+    fn new_local(&self, fld: &ast::FieldDecl) -> Rc<ir::VVar> {
         let scope = self.state.borrow().current_ast_scope;
         self.mut_cache(|cache| cache.new_local(scope, fld.ty.clone(), Some(fld.clone()), fld.span))
     }
 
-    fn new_global(&self, fld: &ast::FieldDecl) -> Rc<ir::Var> {
+    fn new_global(&self, fld: &ast::FieldDecl) -> Rc<ir::VVar> {
         self.mut_cache(|cache| cache.new_global(fld.ty.clone(), Some(fld.clone()), fld.span))
     }
 
-    fn new_temp(&self, ty: &ast::Type) -> Rc<ir::Var> {
+    fn new_temp(&self, ty: &ast::Type) -> Rc<ir::VVar> {
         let scope = self.state.borrow().current_ast_scope;
         self.mut_cache(|cache| cache.new_local(scope, ty.clone(), None, None))
     }
 
-    fn lookup_id(&self, id: &ast::ID) -> Rc<ir::Var> {
+    fn lookup_id(&self, id: &ast::ID) -> Rc<ir::VVar> {
         let mut scope = self.state.borrow().current_ast_scope;
         loop {
             let var = self
@@ -690,9 +695,9 @@ impl<'s> CFGPartialBuild<'s> {
         }
     }
 
-    fn vector_deref(&self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::Var> {
+    fn vector_deref(&self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::VVar> {
         let var_vector = self.lookup_id(id);
-        let ele_ty = Self::array_element_ty(&var_vector.ty);
+        let ele_ty = Self::array_element_ty(&var_vector.var.ty);
         assert!(ele_ty.is_some());
         let ptr_ty = ast::Type::Ptr(Box::new(ele_ty.unwrap().clone()));
 
@@ -719,23 +724,23 @@ impl<'s> CFGPartialBuild<'s> {
     fn read_from_location(&self, loc: &ast::Location) -> ir::Val {
         match &loc {
             ast::Location::Scalar(id) => {
-                let var = self.lookup_id(id);
-                match &var.locality {
-                    ir::Locality::Local => return ir::Val::Var(var),
+                let vvar = self.lookup_id(id);
+                match &vvar.var.locality {
+                    ir::Locality::Local => return ir::Val::Var(vvar),
                     ir::Locality::Global => {
-                        let dst = self.new_temp(&var.ty);
+                        let dst = self.new_temp(&vvar.var.ty);
                         self.push_stmt(ir::Statement::Load {
                             dst: dst.clone(),
-                            ptr: ir::Val::Var(var),
+                            ptr: ir::Val::Var(vvar),
                         });
                         return ir::Val::Var(dst);
                     }
                 }
             }
             ast::Location::Vector(id, idx_expr) => {
-                let var = self.lookup_id(id);
+                let vvar = self.lookup_id(id);
                 let ele_ptr = self.vector_deref(id, idx_expr);
-                let dst = self.new_temp(Self::array_element_ty(&var.ty).unwrap());
+                let dst = self.new_temp(Self::array_element_ty(&vvar.var.ty).unwrap());
                 self.push_stmt(ir::Statement::Load {
                     dst: dst.clone(),
                     ptr: ir::Val::Var(ele_ptr),
@@ -748,14 +753,14 @@ impl<'s> CFGPartialBuild<'s> {
     fn write_to_location(&self, loc: &ast::Location, val: ir::Val) {
         match &loc {
             ast::Location::Scalar(id) => {
-                let var = self.lookup_id(id);
-                match &var.locality {
+                let vvar = self.lookup_id(id);
+                match &vvar.var.locality {
                     ir::Locality::Local => {
-                        self.push_stmt(ir::Statement::Assign { dst: var, src: val });
+                        self.push_stmt(ir::Statement::Assign { dst: vvar, src: val });
                     }
                     ir::Locality::Global => {
                         self.push_stmt(ir::Statement::Store {
-                            ptr: ir::Val::Var(var),
+                            ptr: ir::Val::Var(vvar),
                             src: val,
                         });
                     }

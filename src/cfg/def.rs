@@ -129,6 +129,6 @@ impl fmt::Display for Edge {
 
 pub struct Program {
     pub imports: Vec<String>,
-    pub globals: Vec<Rc<ir::Var>>,
+    pub globals: Vec<Rc<ir::VVar>>,
     pub cfgs: HashMap<String, CFG<ir::Label, ir::BasicBlock, Edge>>,
 }

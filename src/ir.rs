@@ -42,21 +42,58 @@ impl fmt::Display for Var {
 
 impl Eq for Var {}
 
+/// Versioned Var.
+#[derive(Clone)]
+pub struct VVar {
+    pub var: Var,
+    pub version: usize,
+}
+
+impl VVar {
+    pub fn new(var: Var, version: usize) -> Self {
+        VVar {var, version}
+    }
+}
+
+impl Hash for VVar {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.var.id.hash(state);
+        self.version.hash(state);
+    }
+}
+
+impl PartialEq for VVar {
+    fn eq(&self, other: &Self) -> bool {
+        self.var.id == other.var.id && self.version == other.version
+    }
+}
+
+impl fmt::Display for VVar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "v{}.{}", self.var.id, self.version)
+    }
+}
+
+impl Eq for VVar {}
+
 #[derive(Clone)]
 pub enum Val {
-    Var(Rc<Var>),
+    Var(Rc<VVar>),
     Imm(ast::Literal),
 }
 
 impl Val {
     pub fn ty(&self) -> ast::Type {
         match self {
-            Val::Var(v) => v.ty.clone(),
+            Val::Var(v) => v.var.ty.clone(),
             Val::Imm(l) => l.ty(),
         }
     }
 
-    pub fn get_var(&self) -> Option<Rc<Var>> {
+    pub fn get_var(&self) -> Option<Rc<VVar>> {
         match self {
             Val::Var(v) => Some(v.clone()),
             _ => None,
@@ -122,22 +159,22 @@ impl fmt::Display for Branch {
 
 pub enum Statement {
     Assign {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         src: Val,
     },
     Call {
-        dst: Option<Rc<Var>>,
+        dst: Option<Rc<VVar>>,
         method: String,
         arguments: Vec<Val>,
     },
     Return(Option<Val>),
     Alloca {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         ty: ast::Type,
         size: Option<usize>,
     },
     Load {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         ptr: Val,
     },
     Store {
@@ -145,36 +182,36 @@ pub enum Statement {
         src: Val,
     },
     Arith {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         op: ast::ArithOp,
         l: Val,
         r: Val,
     },
     Cmp {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         op: ast::CmpOp,
         l: Val,
         r: Val,
     },
     Cond {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         op: ast::CondOp,
         l: Val,
         r: Val,
     },
     NNeg {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         val: Val,
     },
     LNeg {
-        dst: Rc<Var>,
+        dst: Rc<VVar>,
         val: Val,
     },
     Br(Branch),
 }
 
 impl Statement {
-    pub fn read_vars(&self) -> Vec<Rc<Var>> {
+    pub fn read_vars(&self) -> Vec<Rc<VVar>> {
         let reads = |val: &Val| val.get_var().into_iter().collect();
         match &self {
             Statement::Assign { dst: _, src } => reads(src),
@@ -234,7 +271,7 @@ impl Statement {
             }) => reads(pred),
         }
     }
-    pub fn write_to_var(&self) -> Option<Rc<Var>> {
+    pub fn write_to_var(&self) -> Option<Rc<VVar>> {
         match &self {
             Statement::Assign { dst, src: _ } => Some(dst.clone()),
             Statement::Call {
@@ -324,12 +361,12 @@ impl fmt::Display for Statement {
 pub struct BasicBlock {
     pub label: Label,
     pub ast_scope: ast::Scope,
-    pub args: Vec<Rc<Var>>,
+    pub args: Vec<Rc<VVar>>,
     pub statements: Vec<Statement>,
 }
 
 impl BasicBlock {
-    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<Rc<Var>>) -> Self {
+    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<Rc<VVar>>) -> Self {
         BasicBlock {
             label,
             ast_scope,
@@ -342,10 +379,10 @@ impl BasicBlock {
         self.statements.push(stmt)
     }
 
-    pub fn read_vars(&self) -> Vec<Rc<Var>> {
+    pub fn read_vars(&self) -> Vec<Rc<VVar>> {
         self.statements.iter().flat_map(|s| s.read_vars()).collect()
     }
-    pub fn write_vars(&self) -> Vec<Rc<Var>> {
+    pub fn write_vars(&self) -> Vec<Rc<VVar>> {
         self.statements
             .iter()
             .flat_map(|s| s.write_to_var())
@@ -374,7 +411,7 @@ impl fmt::Display for BasicBlock {
 
 pub struct Function {
     pub name: String,
-    pub args: Vec<Rc<Var>>,
+    pub args: Vec<Rc<VVar>>,
     pub ty: ast::Type,
     pub body: Vec<BasicBlock>,
 }
