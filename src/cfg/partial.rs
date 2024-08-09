@@ -173,7 +173,7 @@ fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
     let out_nodes = cfg.out_nodes(n);
     if out_nodes.len() == 1 {
         let bb_next = out_nodes[0].get_label();
-        let edge = cfg.edge_data(n, out_nodes[0]).unwrap();
+        let edge = cfg.get_edge(n, out_nodes[0]).unwrap();
         assert!(matches!(*edge.borrow(), Edge::Continue));
         Some(ir::Branch::UnCon { label: bb_next })
     } else if out_nodes.len() == 2 {
@@ -182,7 +182,7 @@ fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
         let mut t_var = None;
         let mut f_var = None;
         for o in &out_nodes {
-            let edge = cfg.edge_data(n, o).unwrap();
+            let edge = cfg.get_edge(n, o).unwrap();
             match &*edge.borrow() {
                 Edge::JumpTrue(v) => {
                     t_label = Some(*n);
@@ -254,7 +254,7 @@ impl<'s> CFGPartialBuild<'s> {
                 }
                 full_cfg.insert_node(label.get_label(), Rc::new(RefCell::new(partial_bb)));
                 for dst in partial_cfg.out_nodes(label) {
-                    let edge = partial_cfg.edge_data(label, dst).unwrap();
+                    let edge = partial_cfg.get_edge(label, dst).unwrap();
                     full_cfg.insert_edge(label.get_label(), dst.get_label(), edge.clone());
                 }
             }

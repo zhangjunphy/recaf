@@ -2,6 +2,7 @@ use crate::ast;
 use crate::source_pos::SrcSpan;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -379,10 +380,10 @@ impl BasicBlock {
         self.statements.push(stmt)
     }
 
-    pub fn read_vars(&self) -> Vec<Rc<VVar>> {
+    pub fn read_vars(&self) -> HashSet<Rc<VVar>> {
         self.statements.iter().flat_map(|s| s.read_vars()).collect()
     }
-    pub fn write_vars(&self) -> Vec<Rc<VVar>> {
+    pub fn write_vars(&self) -> HashSet<Rc<VVar>> {
         self.statements
             .iter()
             .flat_map(|s| s.write_to_var())

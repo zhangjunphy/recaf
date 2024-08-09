@@ -146,7 +146,6 @@ impl DominatorTree {
         res.reverse();
         res
     }
-
 }
 
 pub struct DominanceFrontier {
@@ -183,7 +182,11 @@ impl DominanceFrontier {
         &self.root
     }
 
-    pub fn get_frontier(&self, n: &ir::Label) -> Option<&Vec<ir::Label>> {
-        self.nodes.get(n)
+    pub fn get_frontier(&self, n: &ir::Label) -> Vec<&ir::Label> {
+        self.nodes
+            .get(n)
+            .into_iter()
+            .flat_map(|v| v.iter().map(|l| l).collect::<Vec<&ir::Label>>())
+            .collect()
     }
 }

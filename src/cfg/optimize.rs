@@ -32,7 +32,7 @@ impl RemoveEmptyNodes {
             let in_nodes = cfg.in_nodes(n);
             if in_nodes.len() == 1 {
                 let i = in_nodes[0];
-                let ed = cfg.edge_data(i, n);
+                let ed = cfg.get_edge(i, n);
                 if matches!(*ed.unwrap().borrow(), Edge::Continue) {
                     return Some((n.clone(), (i.clone(), n.clone())));
                 }
@@ -41,7 +41,7 @@ impl RemoveEmptyNodes {
             let out_nodes = cfg.out_nodes(n);
             if out_nodes.len() == 1 {
                 let o = out_nodes[0];
-                let ed = cfg.edge_data(n, o);
+                let ed = cfg.get_edge(n, o);
                 if matches!(*ed.unwrap().borrow(), Edge::Continue) {
                     return Some((n.clone(), (n.clone(), o.clone())));
                 }

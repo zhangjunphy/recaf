@@ -2,13 +2,15 @@
 //! 1. Re-index variables into SSA
 //! 2. Insert missing basic block parameters
 
+use super::def;
 use super::def::{Edge, CFG};
 use super::partial;
 use crate::ast;
 use crate::dominator;
 use crate::ir;
 use crate::semantic;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 struct VarVersionCache<'s> {
     pub count: HashMap<ir::Var, usize>,
@@ -50,19 +52,51 @@ impl<'s> VarVersionCache<'s> {
 
 pub struct CFGBuild<'s> {
     pub symbols: &'s semantic::ProgramSymbols,
+    pub var_versions: RefCell<VarVersionCache<'s>>,
 }
 
 impl<'s> CFGBuild<'s> {
     pub fn new(symbols: &'s semantic::ProgramSymbols) -> Self {
-        CFGBuild { symbols }
+        CFGBuild {
+            symbols,
+            var_versions: RefCell::new(VarVersionCache::new(symbols)),
+        }
     }
 
-    pub fn build(&mut self, p: &ast::Program) {
+    pub fn build(&self, p: &ast::Program) -> def::Program {
         let mut partial_build = partial::CFGPartialBuild::new(self.symbols);
-        let program = partial_build.build(p);
+        let mut program = partial_build.build(p);
+
+        program
     }
 
-    fn build_cfg(&mut self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
+    fn update_cfg(&self, cfg: &mut CFG<ir::Label, ir::BasicBlock, Edge>) {
+        self.add_bb_args(cfg);
+    }
+
+    fn add_bb_args(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
         let df = dominator::DominanceFrontier::new(cfg);
+        for (label, bb) in cfg.nodes() {
+            let bb_writes = bb.borrow().write_vars();
+            for f in df.get_frontier(label) {
+                let frontier_bb = cfg.get_node(f).unwrap();
+                let frontier_reads = frontier_bb.borrow().read_vars();
+                frontier_reads.intersection(&bb_writes).for_each(|v| {
+                    if !frontier_bb.borrow().args.contains(v) {
+                        frontier_bb.borrow_mut().args.push(v.clone());
+                    }
+                })
+            }
+        }
+    }
+
+    fn add_version_to_vars(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::from([&cfg.entry]);
+        while let Some(l) = queue.pop_front() {
+            let bb = cfg.get_node(l).unwrap();
+            for i in [0..bb.borrow().args.len()] {
+            }
+        }
     }
 }

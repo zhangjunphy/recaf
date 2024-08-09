@@ -49,11 +49,11 @@ where
         }
     }
 
-    pub fn node_data(&self, n: &Ti) -> Option<&Rc<RefCell<Tn>>> {
+    pub fn get_node(&self, n: &Ti) -> Option<&Rc<RefCell<Tn>>> {
         self.nodes.get(n)
     }
 
-    pub fn edge_data(&self, src: &Ti, dst: &Ti) -> Option<&Rc<RefCell<Te>>> {
+    pub fn get_edge(&self, src: &Ti, dst: &Ti) -> Option<&Rc<RefCell<Te>>> {
         let edges = self.edges.get(src)?;
         edges.get(dst)
     }
