@@ -27,7 +27,7 @@ impl<'s> VarVersionCache<'s> {
         }
     }
 
-    fn new_version(&mut self, var: &ir::Var, scope: ast::Scope) {
+    fn new_version(&mut self, var: &ir::Var, scope: ast::Scope) -> usize {
         let version = self.count.entry(var.clone()).or_insert(0);
         *version += 1;
         let scope_map = self
@@ -35,6 +35,7 @@ impl<'s> VarVersionCache<'s> {
             .entry(var.clone())
             .or_insert(HashMap::new());
         scope_map.insert(scope, *version);
+        *version
     }
 
     fn latest_version_in(&mut self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
@@ -95,8 +96,34 @@ impl<'s> CFGBuild<'s> {
         let mut queue = VecDeque::from([&cfg.entry]);
         while let Some(l) = queue.pop_front() {
             let bb = cfg.get_node(l).unwrap();
-            for i in [0..bb.borrow().args.len()] {
+            for i in 0..bb.borrow().args.len() {
+                let var = &bb.borrow().args[i].var;
+                let version = self
+                    .var_versions
+                    .borrow_mut()
+                    .new_version(var, bb.borrow().ast_scope);
+                bb.borrow_mut().args[i].version = version;
             }
+
+            for i in 0..bb.borrow().statements.len() {
+                for read in &mut bb.borrow().statements[i].read_vars() {
+                    let version = self
+                        .var_versions
+                        .borrow()
+                        .latest_version_in(&read.var, bb.borrow().ast_scope);
+                    read.version = version.unwrap();
+                }
+                for write in &mut bb.borrow().statements[i].write_to_var() {
+                    let version = self
+                        .var_versions
+                        .borrow_mut()
+                        .new_version(&write.var, bb.borrow().ast_scope);
+                    write.version = version;
+                }
+            }
+
+            visited.insert(bb.borrow().label);
+            cfg.out_nodes(&bb.borrow().label);
         }
     }
 }
