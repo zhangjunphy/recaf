@@ -1,8 +1,9 @@
 use crate::ast;
 use crate::source_pos::SrcSpan;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::collections::HashSet;
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -47,12 +48,12 @@ impl Eq for Var {}
 #[derive(Clone)]
 pub struct VVar {
     pub var: Var,
-    pub version: usize,
+    pub version: RefCell<usize>,
 }
 
 impl VVar {
     pub fn new(var: Var, version: usize) -> Self {
-        VVar {var, version}
+        VVar { var, version: RefCell::new(version) }
     }
 }
 
@@ -62,7 +63,7 @@ impl Hash for VVar {
         H: Hasher,
     {
         self.var.id.hash(state);
-        self.version.hash(state);
+        self.version.borrow().hash(state);
     }
 }
 
@@ -74,7 +75,7 @@ impl PartialEq for VVar {
 
 impl fmt::Display for VVar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "v{}.{}", self.var.id, self.version)
+        write!(f, "v{}.{}", self.var.id, self.version.borrow())
     }
 }
 

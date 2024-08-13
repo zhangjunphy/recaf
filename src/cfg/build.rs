@@ -11,6 +11,7 @@ use crate::ir;
 use crate::semantic;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::rc::Rc;
 
 struct VarVersionCache<'s> {
     pub count: HashMap<ir::Var, usize>,
@@ -38,7 +39,7 @@ impl<'s> VarVersionCache<'s> {
         *version
     }
 
-    fn latest_version_in(&mut self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
+    fn latest_version_in(&self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
         let var_version = self.latest_version_in_scope.get(&var)?;
         let mut scope = Some(scope);
         while let Some(s) = scope {
@@ -53,7 +54,7 @@ impl<'s> VarVersionCache<'s> {
 
 pub struct CFGBuild<'s> {
     pub symbols: &'s semantic::ProgramSymbols,
-    pub var_versions: RefCell<VarVersionCache<'s>>,
+    var_versions: RefCell<VarVersionCache<'s>>,
 }
 
 impl<'s> CFGBuild<'s> {
@@ -67,12 +68,15 @@ impl<'s> CFGBuild<'s> {
     pub fn build(&self, p: &ast::Program) -> def::Program {
         let mut partial_build = partial::CFGPartialBuild::new(self.symbols);
         let mut program = partial_build.build(p);
-
+        for (_, cfg) in &mut program.cfgs {
+            self.update_cfg(cfg);
+        }
         program
     }
 
     fn update_cfg(&self, cfg: &mut CFG<ir::Label, ir::BasicBlock, Edge>) {
         self.add_bb_args(cfg);
+        self.add_version_to_vars(cfg);
     }
 
     fn add_bb_args(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
@@ -91,18 +95,20 @@ impl<'s> CFGBuild<'s> {
         }
     }
 
-    fn add_version_to_vars(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
+    fn add_version_to_vars(&self, cfg: &mut CFG<ir::Label, ir::BasicBlock, Edge>) {
         let mut visited = HashSet::new();
-        let mut queue = VecDeque::from([&cfg.entry]);
+        let mut queue = VecDeque::from([cfg.entry]);
+        let mut edge_updates: Vec<(ir::Label, ir::Label, def::Edge)> = Vec::new();
         while let Some(l) = queue.pop_front() {
-            let bb = cfg.get_node(l).unwrap();
+            visited.insert(l);
+            let bb = cfg.get_node(&l).unwrap();
             for i in 0..bb.borrow().args.len() {
                 let var = &bb.borrow().args[i].var;
                 let version = self
                     .var_versions
                     .borrow_mut()
                     .new_version(var, bb.borrow().ast_scope);
-                bb.borrow_mut().args[i].version = version;
+                *bb.borrow().args[i].version.borrow_mut() = version;
             }
 
             for i in 0..bb.borrow().statements.len() {
@@ -110,20 +116,61 @@ impl<'s> CFGBuild<'s> {
                     let version = self
                         .var_versions
                         .borrow()
-                        .latest_version_in(&read.var, bb.borrow().ast_scope);
-                    read.version = version.unwrap();
+                        .latest_version_in(&read.var, bb.borrow().ast_scope)
+                        .unwrap();
+                    *read.version.borrow_mut() = version;
                 }
                 for write in &mut bb.borrow().statements[i].write_to_var() {
                     let version = self
                         .var_versions
                         .borrow_mut()
                         .new_version(&write.var, bb.borrow().ast_scope);
-                    write.version = version;
+                    *write.version.borrow_mut() = version;
                 }
             }
 
-            visited.insert(bb.borrow().label);
-            cfg.out_nodes(&bb.borrow().label);
+            for o in cfg.out_nodes(&l) {
+                let edge = cfg.get_edge(&l, o).unwrap().borrow();
+                match &*edge {
+                    def::Edge::Continue => (),
+                    def::Edge::JumpTrue(val) => {
+                        let versioned_val = match val {
+                            i @ ir::Val::Imm(_) => i.clone(),
+                            ir::Val::Var(v) => {
+                                let version = self
+                                    .var_versions
+                                    .borrow()
+                                    .latest_version_in(&v.var, bb.borrow().ast_scope)
+                                    .unwrap();
+                                let res = v.clone();
+                                *res.version.borrow_mut() = version;
+                                ir::Val::Var(res)
+                            }
+                        };
+                        edge_updates.push((l, *o, def::Edge::JumpTrue(versioned_val.clone())));
+                    }
+                    def::Edge::JumpFalse(val) => {
+                        let versioned_val = match val {
+                            i @ ir::Val::Imm(_) => i.clone(),
+                            ir::Val::Var(v) => {
+                                let version = self
+                                    .var_versions
+                                    .borrow()
+                                    .latest_version_in(&v.var, bb.borrow().ast_scope)
+                                    .unwrap();
+                                let res = v.clone();
+                                *res.version.borrow_mut() = version;
+                                ir::Val::Var(res)
+                            }
+                        };
+                        edge_updates.push((l, *o, def::Edge::JumpFalse(versioned_val.clone())));
+                    }
+                };
+            }
         }
+
+        edge_updates.into_iter().for_each(|(s, d, e)|{
+            cfg.insert_edge(s, d, Rc::new(RefCell::new(e)));
+        })
     }
 }

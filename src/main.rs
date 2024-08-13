@@ -1,6 +1,6 @@
 use clap::Parser;
 use recaf::ast::ASTPrinter;
-use recaf::cfg::{draw, optimize, optimize::CFGOptimizer, partial};
+use recaf::cfg::{draw, optimize, optimize::CFGOptimizer, build};
 use recaf::cli::{Args, Stage};
 use recaf::parser::lexer::Lexer;
 use recaf::semantic;
@@ -89,7 +89,7 @@ fn cfg(file: &String) {
         Ok(s) => s,
     };
 
-    let mut build = partial::CFGPartialBuild::new(&symbols);
+    let build = build::CFGBuild::new(&symbols);
     let mut p = build.build(&program);
 
     let mut optimizer = optimize::RemoveEmptyNodes {};
