@@ -47,7 +47,7 @@ type PartialCFG = CFG<Label, ir::BasicBlock, Edge>;
 
 pub struct Program {
     pub imports: Vec<String>,
-    pub globals: Vec<Rc<ir::VVar>>,
+    pub globals: Vec<ir::VVar>,
     pub cfgs: HashMap<String, PartialCFG>,
 }
 
@@ -68,9 +68,9 @@ impl Default for Program {
 }
 
 pub struct VarCache {
-    pub var_to_symbol: HashMap<Rc<ir::VVar>, (ast::Scope, String)>,
-    pub symbol_to_var: HashMap<(ast::Scope, String), Rc<ir::VVar>>,
-    pub vars: Vec<Rc<ir::VVar>>,
+    pub var_to_symbol: HashMap<ir::VVar, (ast::Scope, String)>,
+    pub symbol_to_var: HashMap<(ast::Scope, String), ir::VVar>,
+    pub vars: Vec<ir::VVar>,
 
     pub next_var_id: usize,
 }
@@ -85,7 +85,7 @@ impl VarCache {
         }
     }
 
-    fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&Rc<ir::VVar>> {
+    fn lookup_var(&self, ast_scope: ast::Scope, symbol: &str) -> Option<&ir::VVar> {
         self.symbol_to_var.get(&(ast_scope, symbol.to_string()))
     }
 
@@ -101,9 +101,9 @@ impl VarCache {
         ty: ast::Type,
         decl: Option<ast::FieldDecl>,
         span: Option<SrcSpan>,
-    ) -> Rc<ir::VVar> {
+    ) -> ir::VVar {
         let id = self.new_var_id();
-        let var = Rc::new(ir::VVar::new(
+        let var = ir::VVar::new(
             ir::Var {
                 id,
                 ty,
@@ -112,7 +112,7 @@ impl VarCache {
                 locality: ir::Locality::Local,
             },
             0,
-        ));
+        );
         if let Some(d) = &decl {
             self.var_to_symbol
                 .insert(var.clone(), (ast_scope, d.id.id.clone()));
@@ -128,9 +128,9 @@ impl VarCache {
         ty: ast::Type,
         decl: Option<ast::FieldDecl>,
         span: Option<SrcSpan>,
-    ) -> Rc<ir::VVar> {
+    ) -> ir::VVar {
         let id = self.new_var_id();
-        let var = Rc::new(ir::VVar::new(
+        let var = ir::VVar::new(
             ir::Var {
                 id,
                 ty,
@@ -139,7 +139,7 @@ impl VarCache {
                 locality: ir::Locality::Global,
             },
             0,
-        ));
+        );
         if let Some(d) = &decl {
             self.var_to_symbol.insert(
                 var.clone(),
@@ -175,7 +175,9 @@ fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
         let bb_next = out_nodes[0].get_label();
         let edge = cfg.get_edge(n, out_nodes[0]).unwrap();
         assert!(matches!(*edge.borrow(), Edge::Continue));
-        Some(ir::Branch::UnCon { label: bb_next })
+        Some(ir::Branch::UnCon {
+            bb: ir::CallBB::new(bb_next, Vec::new()),
+        })
     } else if out_nodes.len() == 2 {
         let mut t_label = None;
         let mut f_label = None;
@@ -185,11 +187,11 @@ fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
             let edge = cfg.get_edge(n, o).unwrap();
             match &*edge.borrow() {
                 Edge::JumpTrue(v) => {
-                    t_label = Some(*n);
+                    t_label = Some(*o);
                     t_var = v.get_var();
                 }
                 Edge::JumpFalse(v) => {
-                    f_label = Some(*n);
+                    f_label = Some(*o);
                     f_var = v.get_var();
                 }
                 _ => {
@@ -202,8 +204,8 @@ fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
         }
         Some(ir::Branch::Con {
             pred: ir::Val::Var(t_var.unwrap()),
-            label_true: t_label.unwrap().get_label(),
-            label_false: f_label.unwrap().get_label(),
+            bb_true: ir::CallBB::new(t_label.unwrap().get_label(), Vec::new()),
+            bb_false: ir::CallBB::new(f_label.unwrap().get_label(), Vec::new()),
         })
     } else if out_nodes.len() > 2 {
         panic!("Basic block should have 2 out edges at most.")
@@ -315,13 +317,13 @@ impl<'s> CFGPartialBuild<'s> {
         });
     }
 
-    fn new_isolated_block(&self, args: Vec<Rc<ir::VVar>>) -> ir::Label {
+    fn new_isolated_block(&self, args: Vec<ir::VVar>) -> ir::Label {
         let label = self.start_block(args);
         self.finish_block();
         label
     }
 
-    fn start_block(&self, args: Vec<Rc<ir::VVar>>) -> ir::Label {
+    fn start_block(&self, args: Vec<ir::VVar>) -> ir::Label {
         let id = self.new_block_id();
         assert!(self.state.borrow().current_block.borrow().is_none());
         let ast_scope = self.state.borrow().current_ast_scope;
@@ -391,21 +393,21 @@ impl<'s> CFGPartialBuild<'s> {
         });
     }
 
-    fn new_local(&self, fld: &ast::FieldDecl) -> Rc<ir::VVar> {
+    fn new_local(&self, fld: &ast::FieldDecl) -> ir::VVar {
         let scope = self.state.borrow().current_ast_scope;
         self.mut_cache(|cache| cache.new_local(scope, fld.ty.clone(), Some(fld.clone()), fld.span))
     }
 
-    fn new_global(&self, fld: &ast::FieldDecl) -> Rc<ir::VVar> {
+    fn new_global(&self, fld: &ast::FieldDecl) -> ir::VVar {
         self.mut_cache(|cache| cache.new_global(fld.ty.clone(), Some(fld.clone()), fld.span))
     }
 
-    fn new_temp(&self, ty: &ast::Type) -> Rc<ir::VVar> {
+    fn new_temp(&self, ty: &ast::Type) -> ir::VVar {
         let scope = self.state.borrow().current_ast_scope;
         self.mut_cache(|cache| cache.new_local(scope, ty.clone(), None, None))
     }
 
-    fn lookup_id(&self, id: &ast::ID) -> Rc<ir::VVar> {
+    fn lookup_id(&self, id: &ast::ID) -> ir::VVar {
         let mut scope = self.state.borrow().current_ast_scope;
         loop {
             let var = self
@@ -695,7 +697,7 @@ impl<'s> CFGPartialBuild<'s> {
         }
     }
 
-    fn vector_deref(&self, id: &ast::ID, expr: &ast::Expr) -> Rc<ir::VVar> {
+    fn vector_deref(&self, id: &ast::ID, expr: &ast::Expr) -> ir::VVar {
         let var_vector = self.lookup_id(id);
         let ele_ty = Self::array_element_ty(&var_vector.var.ty);
         assert!(ele_ty.is_some());
@@ -756,7 +758,10 @@ impl<'s> CFGPartialBuild<'s> {
                 let vvar = self.lookup_id(id);
                 match &vvar.var.locality {
                     ir::Locality::Local => {
-                        self.push_stmt(ir::Statement::Assign { dst: vvar, src: val });
+                        self.push_stmt(ir::Statement::Assign {
+                            dst: vvar,
+                            src: val,
+                        });
                     }
                     ir::Locality::Global => {
                         self.push_stmt(ir::Statement::Store {

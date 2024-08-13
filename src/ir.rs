@@ -47,13 +47,16 @@ impl Eq for Var {}
 /// Versioned Var.
 #[derive(Clone)]
 pub struct VVar {
-    pub var: Var,
+    pub var: Rc<Var>,
     pub version: RefCell<usize>,
 }
 
 impl VVar {
     pub fn new(var: Var, version: usize) -> Self {
-        VVar { var, version: RefCell::new(version) }
+        VVar {
+            var: Rc::new(var),
+            version: RefCell::new(version),
+        }
     }
 }
 
@@ -83,7 +86,7 @@ impl Eq for VVar {}
 
 #[derive(Clone)]
 pub enum Val {
-    Var(Rc<VVar>),
+    Var(VVar),
     Imm(ast::Literal),
 }
 
@@ -95,7 +98,7 @@ impl Val {
         }
     }
 
-    pub fn get_var(&self) -> Option<Rc<VVar>> {
+    pub fn get_var(&self) -> Option<VVar> {
         match self {
             Val::Var(v) => Some(v.clone()),
             _ => None,
@@ -106,7 +109,7 @@ impl Val {
 impl fmt::Display for Val {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Val::Var(v) => f.write_str(v.as_ref().to_string().as_str()),
+            Val::Var(v) => f.write_str(v.to_string().as_str()),
             Val::Imm(l) => f.write_str(l.to_string().as_str()),
         }
     }
@@ -135,48 +138,74 @@ impl From<usize> for Label {
     }
 }
 
+pub struct CallBB {
+    pub label: Label,
+    pub args: Vec<VVar>,
+}
+
+impl CallBB {
+    pub fn new(label: Label, args: Vec<VVar>) -> Self {
+        CallBB { label, args }
+    }
+}
+
+impl fmt::Display for CallBB {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}({})",
+            self.label,
+            self.args
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
 pub enum Branch {
     UnCon {
-        label: Label,
+        bb: CallBB,
     },
     Con {
         pred: Val,
-        label_true: Label,
-        label_false: Label,
+        bb_true: CallBB,
+        bb_false: CallBB,
     },
 }
 
 impl fmt::Display for Branch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Branch::UnCon { label } => write!(f, "br {}", label),
+            Branch::UnCon { bb } => write!(f, "br {}", bb),
             Branch::Con {
                 pred,
-                label_true,
-                label_false,
-            } => write!(f, "br {}, {}, {}", pred, label_true, label_false),
+                bb_true,
+                bb_false,
+            } => write!(f, "br {}, {}, {}", pred, bb_true, bb_false),
         }
     }
 }
 
 pub enum Statement {
     Assign {
-        dst: Rc<VVar>,
+        dst: VVar,
         src: Val,
     },
     Call {
-        dst: Option<Rc<VVar>>,
+        dst: Option<VVar>,
         method: String,
         arguments: Vec<Val>,
     },
     Return(Option<Val>),
     Alloca {
-        dst: Rc<VVar>,
+        dst: VVar,
         ty: ast::Type,
         size: Option<usize>,
     },
     Load {
-        dst: Rc<VVar>,
+        dst: VVar,
         ptr: Val,
     },
     Store {
@@ -184,36 +213,36 @@ pub enum Statement {
         src: Val,
     },
     Arith {
-        dst: Rc<VVar>,
+        dst: VVar,
         op: ast::ArithOp,
         l: Val,
         r: Val,
     },
     Cmp {
-        dst: Rc<VVar>,
+        dst: VVar,
         op: ast::CmpOp,
         l: Val,
         r: Val,
     },
     Cond {
-        dst: Rc<VVar>,
+        dst: VVar,
         op: ast::CondOp,
         l: Val,
         r: Val,
     },
     NNeg {
-        dst: Rc<VVar>,
+        dst: VVar,
         val: Val,
     },
     LNeg {
-        dst: Rc<VVar>,
+        dst: VVar,
         val: Val,
     },
     Br(Branch),
 }
 
 impl Statement {
-    pub fn read_vars(&self) -> Vec<Rc<VVar>> {
+    pub fn read_vars(&self) -> Vec<VVar> {
         let reads = |val: &Val| val.get_var().into_iter().collect();
         match &self {
             Statement::Assign { dst: _, src } => reads(src),
@@ -265,15 +294,15 @@ impl Statement {
             }
             Statement::NNeg { dst: _, val } => reads(val),
             Statement::LNeg { dst: _, val } => reads(val),
-            Statement::Br(Branch::UnCon { label: _ }) => Vec::new(),
+            Statement::Br(Branch::UnCon { bb: _ }) => Vec::new(),
             Statement::Br(Branch::Con {
                 pred,
-                label_true: _,
-                label_false: _,
+                bb_true: _,
+                bb_false: _,
             }) => reads(pred),
         }
     }
-    pub fn write_to_var(&self) -> Option<Rc<VVar>> {
+    pub fn write_to_var(&self) -> Option<VVar> {
         match &self {
             Statement::Assign { dst, src: _ } => Some(dst.clone()),
             Statement::Call {
@@ -363,12 +392,12 @@ impl fmt::Display for Statement {
 pub struct BasicBlock {
     pub label: Label,
     pub ast_scope: ast::Scope,
-    pub args: Vec<Rc<VVar>>,
+    pub args: Vec<VVar>,
     pub statements: Vec<Statement>,
 }
 
 impl BasicBlock {
-    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<Rc<VVar>>) -> Self {
+    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<VVar>) -> Self {
         BasicBlock {
             label,
             ast_scope,
@@ -381,10 +410,10 @@ impl BasicBlock {
         self.statements.push(stmt)
     }
 
-    pub fn read_vars(&self) -> HashSet<Rc<VVar>> {
+    pub fn read_vars(&self) -> HashSet<VVar> {
         self.statements.iter().flat_map(|s| s.read_vars()).collect()
     }
-    pub fn write_vars(&self) -> HashSet<Rc<VVar>> {
+    pub fn write_vars(&self) -> HashSet<VVar> {
         self.statements
             .iter()
             .flat_map(|s| s.write_to_var())
@@ -400,10 +429,16 @@ impl Default for BasicBlock {
 
 impl fmt::Display for BasicBlock {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<id: {}>\n", self.label)?;
-        for arg in &self.args {
-            write!(f, "declare {};\n", arg.as_ref())?;
-        }
+        write!(
+            f,
+            "<id: {}, args: ({})>\n",
+            self.label,
+            self.args
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
         for stmt in &self.statements {
             write!(f, "{};\n", stmt)?;
         }
@@ -413,7 +448,7 @@ impl fmt::Display for BasicBlock {
 
 pub struct Function {
     pub name: String,
-    pub args: Vec<Rc<VVar>>,
+    pub args: Vec<VVar>,
     pub ty: ast::Type,
     pub body: Vec<BasicBlock>,
 }

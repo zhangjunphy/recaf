@@ -3,7 +3,7 @@
 //! This should be sufficient for our current needs. Later we could
 //! considier implementing the more effiencet SNCA algorithm.
 
-use crate::cfg::def::{Edge, CFG};
+use crate::cfg::def::CFG;
 use crate::ir;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ pub struct DominatorTree {
 }
 
 impl DominatorTree {
-    pub fn new(cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) -> Self {
+    pub fn new<BB, EG>(cfg: &CFG<ir::Label, BB, EG>) -> Self {
         let mut tree = DominatorTree {
             root: cfg.entry,
             nodes: HashMap::new(),
@@ -44,6 +44,9 @@ impl DominatorTree {
         while let Some(n) = queue.pop_front() {
             let mut out_nodes = BTreeSet::new();
             for o in cfg.out_nodes(n) {
+                if parent_map.contains_key(o) {
+                    continue;
+                }
                 out_nodes.insert(*o);
                 parent_map.insert(*o, *n);
                 queue.push_back(o);
@@ -84,12 +87,19 @@ impl DominatorTree {
         &self.root
     }
 
-    pub fn dominates(&self, n: &ir::Label) -> Vec<ir::Label> {
-        let mut res = vec![*n];
+    pub fn strictly_dominates(&self, n: &ir::Label) -> Vec<ir::Label> {
+        let mut res = Vec::new();
         for c in &self.nodes.get(n).unwrap().children {
-            let mut c_doms = self.dominates(c);
+            res.push(*c);
+            let mut c_doms = self.strictly_dominates(c);
             res.append(&mut c_doms);
         }
+        res
+    }
+
+    pub fn dominates(&self, n: &ir::Label) -> Vec<ir::Label> {
+        let mut res = vec![*n];
+        res.append(&mut self.strictly_dominates(n));
         res
     }
 
@@ -130,7 +140,7 @@ impl DominatorTree {
             }
             i += 1;
         }
-        paths[0][i]
+        paths[0][i - 1]
     }
 
     fn path_to_root(&self, n: &ir::Label) -> Vec<ir::Label> {
@@ -154,7 +164,7 @@ pub struct DominanceFrontier {
 }
 
 impl DominanceFrontier {
-    pub fn new(cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) -> Self {
+    pub fn new<BB, EG>(cfg: &CFG<ir::Label, BB, EG>) -> Self {
         let dt = DominatorTree::new(cfg);
         let mut nodes: HashMap<ir::Label, Vec<ir::Label>> = HashMap::new();
         for (n, _) in &dt.nodes {
@@ -165,7 +175,7 @@ impl DominanceFrontier {
                     let nd_succ = cfg.out_nodes(nd);
                     nd_succ
                         .into_iter()
-                        .filter(|n| !n_doms.contains(n))
+                        .filter(|su| *su == n || !n_doms.contains(su))
                         .map(|n| *n)
                 })
                 .collect();
@@ -174,7 +184,7 @@ impl DominanceFrontier {
 
         DominanceFrontier {
             root: cfg.entry,
-            nodes: HashMap::new(),
+            nodes,
         }
     }
 

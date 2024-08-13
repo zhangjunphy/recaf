@@ -6,6 +6,7 @@ use super::def;
 use super::def::{Edge, CFG};
 use super::partial;
 use crate::ast;
+use crate::consts;
 use crate::dominator;
 use crate::ir;
 use crate::semantic;
@@ -36,7 +37,7 @@ impl<'s> VarVersionCache<'s> {
             .entry(var.clone())
             .or_insert(HashMap::new());
         scope_map.insert(scope, *version);
-        *version
+        *version - 1
     }
 
     fn latest_version_in(&self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
@@ -68,6 +69,7 @@ impl<'s> CFGBuild<'s> {
     pub fn build(&self, p: &ast::Program) -> def::Program {
         let mut partial_build = partial::CFGPartialBuild::new(self.symbols);
         let mut program = partial_build.build(p);
+        self.init_global_version(&program);
         for (_, cfg) in &mut program.cfgs {
             self.update_cfg(cfg);
         }
@@ -92,6 +94,16 @@ impl<'s> CFGBuild<'s> {
                     }
                 })
             }
+        }
+    }
+
+    fn init_global_version(&self, p: &def::Program) {
+        for g in &p.globals {
+            let version = self
+                .var_versions
+                .borrow_mut()
+                .new_version(&g.var, ast::Scope::new(consts::ROOT_SCOPE_ID));
+            *g.version.borrow_mut() = version;
         }
     }
 
@@ -169,7 +181,7 @@ impl<'s> CFGBuild<'s> {
             }
         }
 
-        edge_updates.into_iter().for_each(|(s, d, e)|{
+        edge_updates.into_iter().for_each(|(s, d, e)| {
             cfg.insert_edge(s, d, Rc::new(RefCell::new(e)));
         })
     }
