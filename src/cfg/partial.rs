@@ -104,13 +104,13 @@ impl VarCache {
     ) -> ir::VVar {
         let id = self.new_var_id();
         let var = ir::VVar::new(
-            ir::Var {
+            Rc::new(ir::Var {
                 id,
                 ty,
                 decl: decl.clone(),
                 span,
                 locality: ir::Locality::Local,
-            },
+            }),
             0,
         );
         if let Some(d) = &decl {
@@ -131,13 +131,13 @@ impl VarCache {
     ) -> ir::VVar {
         let id = self.new_var_id();
         let var = ir::VVar::new(
-            ir::Var {
+            Rc::new(ir::Var {
                 id,
                 ty,
                 decl: decl.clone(),
                 span,
                 locality: ir::Locality::Global,
-            },
+            }),
             0,
         );
         if let Some(d) = &decl {
@@ -181,29 +181,30 @@ fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
     } else if out_nodes.len() == 2 {
         let mut t_label = None;
         let mut f_label = None;
-        let mut t_var = None;
-        let mut f_var = None;
+        let mut t_val = None;
+        let mut f_val = None;
         for o in &out_nodes {
             let edge = cfg.get_edge(n, o).unwrap();
             match &*edge.borrow() {
                 Edge::JumpTrue(v) => {
                     t_label = Some(*o);
-                    t_var = v.get_var();
+                    t_val = Some(v.clone());
                 }
                 Edge::JumpFalse(v) => {
                     f_label = Some(*o);
-                    f_var = v.get_var();
+                    f_val = Some(v.clone());
                 }
                 _ => {
                     panic!("Invalid branching in CFG.")
                 }
             }
         }
-        if t_var != f_var {
+        assert!(t_val.is_some());
+        if t_val != f_val {
             panic!("Branching in CFG has inconsistant variables.")
         }
         Some(ir::Branch::Con {
-            pred: ir::Val::Var(t_var.unwrap()),
+            pred: t_val.unwrap(),
             bb_true: ir::CallBB::new(t_label.unwrap().get_label(), Vec::new()),
             bb_false: ir::CallBB::new(f_label.unwrap().get_label(), Vec::new()),
         })

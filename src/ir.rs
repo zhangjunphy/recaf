@@ -52,9 +52,9 @@ pub struct VVar {
 }
 
 impl VVar {
-    pub fn new(var: Var, version: usize) -> Self {
+    pub fn new(var: Rc<Var>, version: usize) -> Self {
         VVar {
-            var: Rc::new(var),
+            var,
             version: RefCell::new(version),
         }
     }
@@ -84,7 +84,7 @@ impl fmt::Display for VVar {
 
 impl Eq for VVar {}
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Val {
     Var(VVar),
     Imm(ast::Literal),
@@ -98,9 +98,9 @@ impl Val {
         }
     }
 
-    pub fn get_var(&self) -> Option<VVar> {
+    pub fn get_var(&self) -> Option<&VVar> {
         match self {
-            Val::Var(v) => Some(v.clone()),
+            Val::Var(v) => Some(v),
             _ => None,
         }
     }
@@ -138,6 +138,7 @@ impl From<usize> for Label {
     }
 }
 
+#[derive(Clone)]
 pub struct CallBB {
     pub label: Label,
     pub args: Vec<VVar>,
@@ -164,6 +165,7 @@ impl fmt::Display for CallBB {
     }
 }
 
+#[derive(Clone)]
 pub enum Branch {
     UnCon {
         bb: CallBB,
@@ -188,6 +190,7 @@ impl fmt::Display for Branch {
     }
 }
 
+#[derive(Clone)]
 pub enum Statement {
     Assign {
         dst: VVar,
@@ -242,8 +245,8 @@ pub enum Statement {
 }
 
 impl Statement {
-    pub fn read_vars(&self) -> Vec<VVar> {
-        let reads = |val: &Val| val.get_var().into_iter().collect();
+    pub fn read_vars<'s>(&'s self) -> Vec<&VVar> {
+        let reads = |val: &'s Val| val.get_var().into_iter().collect();
         match &self {
             Statement::Assign { dst: _, src } => reads(src),
             Statement::Call {
@@ -302,42 +305,42 @@ impl Statement {
             }) => reads(pred),
         }
     }
-    pub fn write_to_var(&self) -> Option<VVar> {
+    pub fn write_to_var(&self) -> Option<&VVar> {
         match &self {
-            Statement::Assign { dst, src: _ } => Some(dst.clone()),
+            Statement::Assign { dst, src: _ } => Some(dst),
             Statement::Call {
                 dst,
                 method: _,
                 arguments: _,
-            } => dst.clone(),
+            } => dst.as_ref(),
             Statement::Return(_) => None,
             Statement::Alloca {
                 dst,
                 ty: _,
                 size: _,
-            } => Some(dst.clone()),
-            Statement::Load { dst, ptr: _ } => Some(dst.clone()),
+            } => Some(dst),
+            Statement::Load { dst, ptr: _ } => Some(dst),
             Statement::Store { ptr: _, src: _ } => None,
             Statement::Arith {
                 dst,
                 op: _,
                 l: _,
                 r: _,
-            } => Some(dst.clone()),
+            } => Some(dst),
             Statement::Cmp {
                 dst,
                 op: _,
                 l: _,
                 r: _,
-            } => Some(dst.clone()),
+            } => Some(dst),
             Statement::Cond {
                 dst,
                 op: _,
                 l: _,
                 r: _,
-            } => Some(dst.clone()),
-            Statement::NNeg { dst, val: _ } => Some(dst.clone()),
-            Statement::LNeg { dst, val: _ } => Some(dst.clone()),
+            } => Some(dst),
+            Statement::NNeg { dst, val: _ } => Some(dst),
+            Statement::LNeg { dst, val: _ } => Some(dst),
             Statement::Br(_) => None,
         }
     }
@@ -410,10 +413,10 @@ impl BasicBlock {
         self.statements.push(stmt)
     }
 
-    pub fn read_vars(&self) -> HashSet<VVar> {
+    pub fn read_vars(&self) -> HashSet<&VVar> {
         self.statements.iter().flat_map(|s| s.read_vars()).collect()
     }
-    pub fn write_vars(&self) -> HashSet<VVar> {
+    pub fn write_vars(&self) -> HashSet<&VVar> {
         self.statements
             .iter()
             .flat_map(|s| s.write_to_var())

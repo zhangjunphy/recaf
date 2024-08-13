@@ -17,6 +17,7 @@ use std::rc::Rc;
 struct VarVersionCache<'s> {
     pub count: HashMap<ir::Var, usize>,
     pub latest_version_in_scope: HashMap<ir::Var, HashMap<ast::Scope, usize>>,
+    pub latest_version_in_bb: HashMap<ir::Var, HashMap<ir::Label, usize>>,
     pub symbols: &'s semantic::ProgramSymbols,
 }
 
@@ -25,22 +26,34 @@ impl<'s> VarVersionCache<'s> {
         VarVersionCache {
             count: HashMap::new(),
             latest_version_in_scope: HashMap::new(),
+            latest_version_in_bb: HashMap::new(),
             symbols,
         }
     }
 
-    fn new_version(&mut self, var: &ir::Var, scope: ast::Scope) -> usize {
-        let version = self.count.entry(var.clone()).or_insert(0);
-        *version += 1;
+    fn new_version(&mut self, var: &ir::Var, scope: ast::Scope, bb: ir::Label) -> usize {
+        let count = self.count.entry(var.clone()).or_insert(0);
+        let version = *count;
+        *count += 1;
         let scope_map = self
             .latest_version_in_scope
             .entry(var.clone())
             .or_insert(HashMap::new());
-        scope_map.insert(scope, *version);
-        *version - 1
+        scope_map.insert(scope, version);
+        let bb_map = self
+            .latest_version_in_bb
+            .entry(var.clone())
+            .or_insert(HashMap::new());
+        bb_map.insert(bb, version);
+        version
     }
 
-    fn latest_version_in(&self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
+    fn latest_version_in_bb(&self, var: &ir::Var, bb: ir::Label) -> Option<usize> {
+        let var_version = self.latest_version_in_bb.get(&var)?;
+        var_version.get(&bb).map(|b| *b)
+    }
+
+    fn latest_version_in_scope(&self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
         let var_version = self.latest_version_in_scope.get(&var)?;
         let mut scope = Some(scope);
         while let Some(s) = scope {
@@ -79,18 +92,32 @@ impl<'s> CFGBuild<'s> {
     fn update_cfg(&self, cfg: &mut CFG<ir::Label, ir::BasicBlock, Edge>) {
         self.add_bb_args(cfg);
         self.add_version_to_vars(cfg);
+        self.add_bb_call_args(cfg);
     }
 
     fn add_bb_args(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
         let df = dominator::DominanceFrontier::new(cfg);
         for (label, bb) in cfg.nodes() {
-            let bb_writes = bb.borrow().write_vars();
+            let bb_writes = bb
+                .borrow()
+                .write_vars()
+                .into_iter()
+                .map(|v| v.clone())
+                .collect();
             for f in df.get_frontier(label) {
+                if f == label {
+                    continue;
+                }
                 let frontier_bb = cfg.get_node(f).unwrap();
-                let frontier_reads = frontier_bb.borrow().read_vars();
+                let frontier_reads: HashSet<_> = frontier_bb
+                    .borrow()
+                    .read_vars()
+                    .into_iter()
+                    .map(|v| v.clone())
+                    .collect();
                 frontier_reads.intersection(&bb_writes).for_each(|v| {
                     if !frontier_bb.borrow().args.contains(v) {
-                        frontier_bb.borrow_mut().args.push(v.clone());
+                        frontier_bb.borrow_mut().args.push((*v).clone());
                     }
                 })
             }
@@ -99,27 +126,27 @@ impl<'s> CFGBuild<'s> {
 
     fn init_global_version(&self, p: &def::Program) {
         for g in &p.globals {
-            let version = self
-                .var_versions
-                .borrow_mut()
-                .new_version(&g.var, ast::Scope::new(consts::ROOT_SCOPE_ID));
+            let version = self.var_versions.borrow_mut().new_version(
+                &g.var,
+                ast::Scope::new(consts::ROOT_SCOPE_ID),
+                ir::Label::new(0),
+            );
             *g.version.borrow_mut() = version;
         }
     }
 
     fn add_version_to_vars(&self, cfg: &mut CFG<ir::Label, ir::BasicBlock, Edge>) {
-        let mut visited = HashSet::new();
+        let mut enqueued = HashSet::from([cfg.entry]);
         let mut queue = VecDeque::from([cfg.entry]);
         let mut edge_updates: Vec<(ir::Label, ir::Label, def::Edge)> = Vec::new();
         while let Some(l) = queue.pop_front() {
-            visited.insert(l);
             let bb = cfg.get_node(&l).unwrap();
             for i in 0..bb.borrow().args.len() {
                 let var = &bb.borrow().args[i].var;
                 let version = self
                     .var_versions
                     .borrow_mut()
-                    .new_version(var, bb.borrow().ast_scope);
+                    .new_version(var, bb.borrow().ast_scope, l);
                 *bb.borrow().args[i].version.borrow_mut() = version;
             }
 
@@ -128,7 +155,7 @@ impl<'s> CFGBuild<'s> {
                     let version = self
                         .var_versions
                         .borrow()
-                        .latest_version_in(&read.var, bb.borrow().ast_scope)
+                        .latest_version_in_scope(&read.var, bb.borrow().ast_scope)
                         .unwrap();
                     *read.version.borrow_mut() = version;
                 }
@@ -136,12 +163,16 @@ impl<'s> CFGBuild<'s> {
                     let version = self
                         .var_versions
                         .borrow_mut()
-                        .new_version(&write.var, bb.borrow().ast_scope);
+                        .new_version(&write.var, bb.borrow().ast_scope, l);
                     *write.version.borrow_mut() = version;
                 }
             }
 
             for o in cfg.out_nodes(&l) {
+                if !enqueued.contains(o) {
+                    queue.push_back(*o);
+                    enqueued.insert(*o);
+                }
                 let edge = cfg.get_edge(&l, o).unwrap().borrow();
                 match &*edge {
                     def::Edge::Continue => (),
@@ -152,7 +183,7 @@ impl<'s> CFGBuild<'s> {
                                 let version = self
                                     .var_versions
                                     .borrow()
-                                    .latest_version_in(&v.var, bb.borrow().ast_scope)
+                                    .latest_version_in_scope(&v.var, bb.borrow().ast_scope)
                                     .unwrap();
                                 let res = v.clone();
                                 *res.version.borrow_mut() = version;
@@ -168,7 +199,7 @@ impl<'s> CFGBuild<'s> {
                                 let version = self
                                     .var_versions
                                     .borrow()
-                                    .latest_version_in(&v.var, bb.borrow().ast_scope)
+                                    .latest_version_in_scope(&v.var, bb.borrow().ast_scope)
                                     .unwrap();
                                 let res = v.clone();
                                 *res.version.borrow_mut() = version;
@@ -184,5 +215,59 @@ impl<'s> CFGBuild<'s> {
         edge_updates.into_iter().for_each(|(s, d, e)| {
             cfg.insert_edge(s, d, Rc::new(RefCell::new(e)));
         })
+    }
+
+    fn add_bb_call_args(&self, cfg: &mut CFG<ir::Label, ir::BasicBlock, Edge>) {
+        for (l, bb) in cfg.nodes() {
+            if bb.borrow().statements.is_empty() {
+                continue;
+            }
+            let s = (*bb.borrow().statements.last().unwrap()).clone();
+            let mut bb_mut = bb.borrow_mut();
+
+            let update_arg = |label, bb_call: &mut ir::CallBB| {
+                for arg in &cfg.get_node(&label).unwrap().borrow().args {
+                    let version = self
+                        .var_versions
+                        .borrow()
+                        .latest_version_in_bb(&arg.var, *l)
+                        .unwrap();
+
+                    bb_call.args.push(ir::VVar::new(arg.var.clone(), version));
+                }
+            };
+            match s {
+                ir::Statement::Br(ir::Branch::UnCon {
+                    bb: ir::CallBB { label, args: _ },
+                }) => match bb_mut.statements.last_mut().unwrap() {
+                    ir::Statement::Br(ir::Branch::UnCon { bb }) => update_arg(label, bb),
+                    _ => (),
+                },
+                ir::Statement::Br(ir::Branch::Con {
+                    pred: _,
+                    bb_true:
+                        ir::CallBB {
+                            label: l_true,
+                            args: _,
+                        },
+                    bb_false:
+                        ir::CallBB {
+                            label: l_false,
+                            args: _,
+                        },
+                }) => match bb_mut.statements.last_mut().unwrap() {
+                    ir::Statement::Br(ir::Branch::Con {
+                        pred: _,
+                        bb_true,
+                        bb_false,
+                    }) => {
+                        update_arg(l_true, bb_true);
+                        update_arg(l_false, bb_false);
+                    }
+                    _ => (),
+                },
+                s => panic!("Terminal statement expected, but found: {s}"),
+            }
+        }
     }
 }
