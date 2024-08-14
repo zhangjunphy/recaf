@@ -1,0 +1,14 @@
+import printf;
+
+
+void main() {
+  bool a, b;
+  a = true;
+  b = true;
+  if (a && b) {
+    printf("a && b == true\n");
+  }
+  if (a || b) {
+    printf("a || b == false\n");
+  }
+}

@@ -23,7 +23,7 @@ mod tests {
     #[test]
     fn test_dominator_tree() {
         let cfg = sample_cfg();
-        let dt = DominatorTree::new(&cfg);
+        let dt = DominatorTree::new(&cfg.entry, &cfg);
         {
             let res = dt
                 .strictly_dominates(&ir::Label::new(0))
@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn test_dominance_frontier() {
         let cfg = sample_cfg();
-        let df = DominanceFrontier::new(&cfg);
+        let df = DominanceFrontier::new(&cfg.entry, &cfg);
         assert!(df.get_frontier(&ir::Label::new(0)).is_empty());
         let res = df
             .get_frontier(&ir::Label::new(1))

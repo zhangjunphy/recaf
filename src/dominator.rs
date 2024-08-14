@@ -3,21 +3,23 @@
 //! This should be sufficient for our current needs. Later we could
 //! considier implementing the more effiencet SNCA algorithm.
 
-use crate::cfg::def::{CFG, Graph};
-use crate::ir;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
+use crate::cfg::def::Graph;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-pub struct Node {
-    pub label: ir::Label,
-    pub parent: Option<ir::Label>,
-    pub children: BTreeSet<ir::Label>,
+pub struct Node<'a, Ti>
+where
+    Ti: Ord,
+{
+    pub label: &'a Ti,
+    pub parent: Option<&'a Ti>,
+    pub children: BTreeSet<&'a Ti>,
 }
 
-impl Node {
-    pub fn new(label: ir::Label, parent: Option<ir::Label>, children: BTreeSet<ir::Label>) -> Self {
+impl<'a, Ti> Node<'a, Ti>
+where
+    Ti: Ord,
+{
+    pub fn new(label: &'a Ti, parent: Option<&'a Ti>, children: BTreeSet<&'a Ti>) -> Self {
         Node {
             label,
             parent,
@@ -26,37 +28,43 @@ impl Node {
     }
 }
 
-pub struct DominatorTree {
-    root: ir::Label,
-    nodes: HashMap<ir::Label, Node>,
+pub struct DominatorTree<'a, Ti>
+where
+    Ti: Ord,
+{
+    root: &'a Ti,
+    nodes: BTreeMap<&'a Ti, Node<'a, Ti>>,
 }
 
-impl DominatorTree {
-    pub fn new<BB, EG>(cfg: &CFG<ir::Label, BB, EG>) -> Self {
+impl<'a, Ti> DominatorTree<'a, Ti>
+where
+    Ti: Ord,
+{
+    pub fn new<BB, EG>(entry: &'a Ti, graph: &'a dyn Graph<Ti, BB, EG>) -> Self {
         let mut tree = DominatorTree {
-            root: cfg.entry,
-            nodes: HashMap::new(),
+            root: entry,
+            nodes: BTreeMap::new(),
         };
 
         // Do a bfs walk of the cfg, construct a tree
-        let mut queue = VecDeque::from([&cfg.entry]);
-        let mut parent_map = HashMap::new();
+        let mut queue = VecDeque::from([entry]);
+        let mut parent_map = BTreeMap::new();
         while let Some(n) = queue.pop_front() {
             let mut out_nodes = BTreeSet::new();
-            for o in cfg.out_neighbors(n) {
+            for o in graph.out_neighbors(n) {
                 if parent_map.contains_key(o) {
                     continue;
                 }
-                out_nodes.insert(*o);
-                parent_map.insert(*o, *n);
+                out_nodes.insert(o);
+                parent_map.insert(o, n);
                 queue.push_back(o);
             }
-            tree.add(*n, None, out_nodes);
+            tree.add(n, None, out_nodes);
         }
 
         // Patch parent
         for (n, p) in &parent_map {
-            tree.get_mut(n).unwrap().parent = Some(*p);
+            tree.get_mut(n).unwrap().parent = Some(p);
         }
 
         // Iteratively update parents of all nodes
@@ -64,7 +72,7 @@ impl DominatorTree {
         loop {
             let mut changed = false;
             for n in &nodes {
-                let preds = cfg.in_neighbors(n);
+                let preds = graph.in_neighbors(n);
                 if preds.is_empty() {
                     continue;
                 }
@@ -83,11 +91,11 @@ impl DominatorTree {
         tree
     }
 
-    pub fn root(&self) -> &ir::Label {
+    pub fn root(&self) -> &'a Ti {
         &self.root
     }
 
-    pub fn strictly_dominates(&self, n: &ir::Label) -> Vec<ir::Label> {
+    pub fn strictly_dominates(&self, n: &Ti) -> Vec<&'a Ti> {
         let mut res = Vec::new();
         for c in &self.nodes.get(n).unwrap().children {
             res.push(*c);
@@ -97,34 +105,34 @@ impl DominatorTree {
         res
     }
 
-    pub fn dominates(&self, n: &ir::Label) -> Vec<ir::Label> {
-        let mut res = vec![*n];
+    pub fn dominates(&self, n: &'a Ti) -> Vec<&'a Ti> {
+        let mut res = vec![n];
         res.append(&mut self.strictly_dominates(n));
         res
     }
 
-    fn add(&mut self, l: ir::Label, p: Option<ir::Label>, c: BTreeSet<ir::Label>) {
+    fn add(&mut self, l: &'a Ti, p: Option<&'a Ti>, c: BTreeSet<&'a Ti>) {
         self.nodes.insert(l, Node::new(l, p, c));
     }
 
-    fn get_mut(&mut self, l: &ir::Label) -> Option<&mut Node> {
+    fn get_mut(&mut self, l: &Ti) -> Option<&mut Node<'a, Ti>> {
         self.nodes.get_mut(l)
     }
 
-    fn get_parent(&self, l: &ir::Label) -> Option<ir::Label> {
+    fn get_parent(&self, l: &Ti) -> Option<&'a Ti> {
         self.nodes.get(l).and_then(|n| n.parent)
     }
 
-    fn replace_parent(&mut self, l: &ir::Label, p: &ir::Label) {
+    fn replace_parent(&mut self, l: &'a Ti, p: &'a Ti) {
         if let Some(prev_parent) = self.get_parent(l) {
             self.nodes.get_mut(&prev_parent).unwrap().children.remove(l);
         }
 
-        self.nodes.get_mut(p).unwrap().children.insert(*l);
-        self.nodes.get_mut(l).unwrap().parent = Some(*p);
+        self.nodes.get_mut(p).unwrap().children.insert(l);
+        self.nodes.get_mut(l).unwrap().parent = Some(p);
     }
 
-    fn nearest_common_ancestor(&self, nodes: Vec<&ir::Label>) -> ir::Label {
+    fn nearest_common_ancestor(&self, nodes: Vec<&Ti>) -> &'a Ti {
         assert!(nodes.len() > 0);
         let paths = nodes
             .into_iter()
@@ -143,9 +151,10 @@ impl DominatorTree {
         paths[0][i - 1]
     }
 
-    fn path_to_root(&self, n: &ir::Label) -> Vec<ir::Label> {
+    fn path_to_root(&self, n: &Ti) -> Vec<&'a Ti> {
         let mut res = Vec::new();
-        let mut node = Some(*n);
+        let nn = self.nodes.get_key_value(n).unwrap().0;
+        let mut node = Some(*nn);
         loop {
             if !node.is_some() {
                 break;
@@ -158,45 +167,47 @@ impl DominatorTree {
     }
 }
 
-pub struct DominanceFrontier {
-    root: ir::Label,
-    nodes: HashMap<ir::Label, Vec<ir::Label>>,
+pub struct DominanceFrontier<'a, Ti>
+where
+    Ti: Ord,
+{
+    root: &'a Ti,
+    nodes: BTreeMap<&'a Ti, Vec<&'a Ti>>,
 }
 
-impl DominanceFrontier {
-    pub fn new<BB, EG>(cfg: &CFG<ir::Label, BB, EG>) -> Self {
-        let dt = DominatorTree::new(cfg);
-        let mut nodes: HashMap<ir::Label, Vec<ir::Label>> = HashMap::new();
+impl<'a, Ti> DominanceFrontier<'a, Ti>
+where
+    Ti: Ord + PartialEq,
+{
+    pub fn new<BB, EG>(entry: &'a Ti, cfg: &'a dyn Graph<Ti, BB, EG>) -> Self {
+        let dt = DominatorTree::new(entry, cfg);
+        let mut nodes: BTreeMap<&'a Ti, Vec<&'a Ti>> = BTreeMap::new();
         for (n, _) in &dt.nodes {
-            let n_doms = dt.dominates(n).into_iter().collect::<HashSet<_>>();
+            let n_doms = dt.dominates(n).into_iter().collect::<BTreeSet<_>>();
             let df_nodes = n_doms
                 .iter()
                 .flat_map(|nd| {
                     let nd_succ = cfg.out_neighbors(nd);
                     nd_succ
                         .into_iter()
-                        .filter(|su| *su == n || !n_doms.contains(su))
-                        .map(|n| *n)
+                        .filter(|su| su == n || !n_doms.contains(su))
                 })
                 .collect();
             nodes.insert(*n, df_nodes);
         }
 
-        DominanceFrontier {
-            root: cfg.entry,
-            nodes,
-        }
+        DominanceFrontier { root: entry, nodes }
     }
 
-    pub fn root(&self) -> &ir::Label {
+    pub fn root(&self) -> &'a Ti {
         &self.root
     }
 
-    pub fn get_frontier(&self, n: &ir::Label) -> Vec<&ir::Label> {
+    pub fn get_frontier(&self, n: &Ti) -> Vec<&'a Ti> {
         self.nodes
             .get(n)
             .into_iter()
-            .flat_map(|v| v.iter().map(|l| l).collect::<Vec<&ir::Label>>())
+            .flat_map(|v| v.iter().map(|l| *l).collect::<Vec<_>>())
             .collect()
     }
 }

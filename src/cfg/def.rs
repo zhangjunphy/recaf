@@ -9,14 +9,14 @@ use std::rc::Rc;
 pub trait Graph<Ti, Tn, Te> {
     fn out_neighbors(&self, n: &Ti) -> Vec<&Ti>;
     fn in_neighbors(&self, n: &Ti) -> Vec<&Ti>;
-    fn get_node(&self, n: &Ti) -> Option<&Rc<RefCell<Tn>>>;
-    fn get_edge(&self, s: &Ti, data: &Ti) -> Option<&Rc<RefCell<Te>>>;
-    fn insert_node(&mut self, n: Ti, data: Rc<RefCell<Tn>>) -> Option<Rc<RefCell<Tn>>>;
-    fn insert_edge(&mut self, src: Ti, dst: Ti, data: Rc<RefCell<Te>>) -> Option<Rc<RefCell<Te>>>;
+    fn get_node(&self, n: &Ti) -> Option<&Tn>;
+    fn get_edge(&self, s: &Ti, data: &Ti) -> Option<&Te>;
+    fn insert_node(&mut self, n: Ti, data: Tn) -> Option<Tn>;
+    fn insert_edge(&mut self, src: Ti, dst: Ti, data: Te) -> Option<Te>;
     fn contains_node(&self, n: &Ti) -> bool;
     fn contains_edge(&self, src: &Ti, dst: &Ti) -> bool;
-    fn remove_node(&mut self, n: &Ti) -> Option<Rc<RefCell<Tn>>>;
-    fn remove_edge(&mut self, src: &Ti, dst: &Ti) -> Option<Rc<RefCell<Te>>>;
+    fn remove_node(&mut self, n: &Ti) -> Option<Tn>;
+    fn remove_edge(&mut self, src: &Ti, dst: &Ti) -> Option<Te>;
 }
 
 pub struct CFG<Ti, Tn, Te>
@@ -31,7 +31,7 @@ where
     redges: BTreeMap<Ti, BTreeSet<Ti>>,
 }
 
-impl<Ti, Tn, Te> Graph<Ti, Tn, Te> for CFG<Ti, Tn, Te>
+impl<Ti, Tn, Te> Graph<Ti, Rc<RefCell<Tn>>, Rc<RefCell<Te>>> for CFG<Ti, Tn, Te>
 where
     Ti: Ord + Clone,
 {

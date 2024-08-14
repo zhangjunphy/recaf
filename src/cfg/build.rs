@@ -96,7 +96,7 @@ impl<'s> CFGBuild<'s> {
     }
 
     fn add_bb_args(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
-        let df = dominator::DominanceFrontier::new(cfg);
+        let df = dominator::DominanceFrontier::new(&cfg.entry, cfg);
         for (label, bb) in cfg.nodes() {
             let bb_writes = bb
                 .borrow()

@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::source_pos::SrcSpan;
 use std::cell::Cell;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -201,7 +201,6 @@ pub enum Statement {
         method: String,
         arguments: Vec<Val>,
     },
-    Return(Option<Val>),
     Alloca {
         dst: VVar,
         ty: ast::Type,
@@ -242,6 +241,7 @@ pub enum Statement {
         val: Val,
     },
     Br(Branch),
+    Return(Option<Val>),
 }
 
 impl Statement {
@@ -454,4 +454,9 @@ pub struct Function {
     pub args: Vec<VVar>,
     pub ty: ast::Type,
     pub body: Vec<BasicBlock>,
+}
+
+pub struct Module {
+    pub globals: Vec<VVar>,
+    pub functions: HashMap<String, Function>,
 }

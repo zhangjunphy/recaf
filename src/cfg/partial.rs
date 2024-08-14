@@ -493,9 +493,9 @@ impl<'s> CFGPartialBuild<'s> {
                     self.add_bb_edge(else_exit, landing_pad, Edge::Continue);
                 } else {
                     let landing_pad = self.start_block(Vec::new());
-                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val));
+                    self.add_bb_edge(head, if_entry, Edge::JumpTrue(pred_val.clone()));
                     self.add_bb_edge(if_exit, landing_pad, Edge::Continue);
-                    self.add_bb_edge(head, landing_pad, Edge::Continue);
+                    self.add_bb_edge(head, landing_pad, Edge::JumpFalse(pred_val));
                 }
             }
             ast::Stmt_::For(f) => {
@@ -610,17 +610,66 @@ impl<'s> CFGPartialBuild<'s> {
                 });
                 ir::Val::Var(local)
             }
-            ast::Expr_::Cond(l, op, r) => {
-                let lval = self.visit_expr(l.as_ref());
-                let rval = self.visit_expr(r.as_ref());
-                let local = self.new_temp(&ast::Type::Bool);
-                self.push_stmt(ir::Statement::Cond {
-                    dst: local.clone(),
-                    op: *op,
-                    l: lval,
-                    r: rval,
-                });
-                ir::Val::Var(local)
+            // Build control flow for conditional expressions to enable short-circuiting.
+            ast::Expr_::Cond(l, ast::CondOp::And, r) => {
+                let lval = self.visit_expr(l);
+                let var = self.new_temp(&expr.ty);
+                let head = self.finish_block().borrow().label;
+                let (l_entry, l_exit) = {
+                    let entry = self.start_block(Vec::new());
+                    self.push_stmt(ir::Statement::Assign {
+                        dst: var.clone(),
+                        src: ir::Val::Imm(ast::Literal::Bool(false)),
+                    });
+                    let exit = self.finish_block().borrow().label;
+                    (entry, exit)
+                };
+                let (r_entry, r_exit) = {
+                    let entry = self.start_block(Vec::new());
+                    let val = self.visit_expr(r);
+                    self.push_stmt(ir::Statement::Assign {
+                        dst: var.clone(),
+                        src: val,
+                    });
+                    let exit = self.finish_block().borrow().label;
+                    (entry, exit)
+                };
+                let landing_pad = self.start_block(Vec::new());
+                self.add_bb_edge(head, l_entry, Edge::JumpFalse(lval.clone()));
+                self.add_bb_edge(head, r_entry, Edge::JumpTrue(lval));
+                self.add_bb_edge(l_exit, landing_pad, Edge::Continue);
+                self.add_bb_edge(r_exit, landing_pad, Edge::Continue);
+                ir::Val::Var(var)
+            }
+            ast::Expr_::Cond(l, ast::CondOp::Or, r) => {
+                let lval = self.visit_expr(l);
+                let var = self.new_temp(&expr.ty);
+                let head = self.finish_block().borrow().label;
+                let (l_entry, l_exit) = {
+                    let entry = self.start_block(Vec::new());
+                    self.push_stmt(ir::Statement::Assign {
+                        dst: var.clone(),
+                        src: ir::Val::Imm(ast::Literal::Bool(true)),
+                    });
+                    let exit = self.finish_block().borrow().label;
+                    (entry, exit)
+                };
+                let (r_entry, r_exit) = {
+                    let entry = self.start_block(Vec::new());
+                    let val = self.visit_expr(r);
+                    self.push_stmt(ir::Statement::Assign {
+                        dst: var.clone(),
+                        src: val,
+                    });
+                    let exit = self.finish_block().borrow().label;
+                    (entry, exit)
+                };
+                let landing_pad = self.start_block(Vec::new());
+                self.add_bb_edge(head, l_entry, Edge::JumpTrue(lval.clone()));
+                self.add_bb_edge(head, r_entry, Edge::JumpFalse(lval));
+                self.add_bb_edge(l_exit, landing_pad, Edge::Continue);
+                self.add_bb_edge(r_exit, landing_pad, Edge::Continue);
+                ir::Val::Var(var)
             }
             ast::Expr_::NNeg(v) => {
                 let val = self.visit_expr(v.as_ref());
