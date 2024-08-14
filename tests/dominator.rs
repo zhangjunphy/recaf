@@ -1,4 +1,4 @@
-use recaf::cfg::def::CFG;
+use recaf::cfg::def::{CFG, Graph};
 use recaf::dominator::*;
 use recaf::ir;
 use std::cell::RefCell;

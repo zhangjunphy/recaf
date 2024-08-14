@@ -3,7 +3,7 @@
 //! This should be sufficient for our current needs. Later we could
 //! considier implementing the more effiencet SNCA algorithm.
 
-use crate::cfg::def::CFG;
+use crate::cfg::def::{CFG, Graph};
 use crate::ir;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ impl DominatorTree {
         let mut parent_map = HashMap::new();
         while let Some(n) = queue.pop_front() {
             let mut out_nodes = BTreeSet::new();
-            for o in cfg.out_nodes(n) {
+            for o in cfg.out_neighbors(n) {
                 if parent_map.contains_key(o) {
                     continue;
                 }
@@ -64,7 +64,7 @@ impl DominatorTree {
         loop {
             let mut changed = false;
             for n in &nodes {
-                let preds = cfg.in_nodes(n);
+                let preds = cfg.in_neighbors(n);
                 if preds.is_empty() {
                     continue;
                 }
@@ -172,7 +172,7 @@ impl DominanceFrontier {
             let df_nodes = n_doms
                 .iter()
                 .flat_map(|nd| {
-                    let nd_succ = cfg.out_nodes(nd);
+                    let nd_succ = cfg.out_neighbors(nd);
                     nd_succ
                         .into_iter()
                         .filter(|su| *su == n || !n_doms.contains(su))

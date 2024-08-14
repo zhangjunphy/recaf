@@ -3,7 +3,7 @@
 //! 2. Insert missing basic block parameters
 
 use super::def;
-use super::def::{Edge, CFG};
+use super::def::{Edge, CFG, Graph};
 use super::partial;
 use crate::ast;
 use crate::consts;
@@ -169,7 +169,7 @@ impl<'s> CFGBuild<'s> {
                 }
             }
 
-            for o in cfg.out_nodes(&l) {
+            for o in cfg.out_neighbors(&l) {
                 if !enqueued.contains(o) {
                     queue.push_back(*o);
                     enqueued.insert(*o);

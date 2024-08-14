@@ -29,7 +29,7 @@ impl RemoveEmptyNodes {
                 continue;
             }
 
-            let in_nodes = cfg.in_nodes(n);
+            let in_nodes = cfg.in_neighbors(n);
             if in_nodes.len() == 1 {
                 let i = in_nodes[0];
                 let ed = cfg.get_edge(i, n);
@@ -38,7 +38,7 @@ impl RemoveEmptyNodes {
                 }
             }
 
-            let out_nodes = cfg.out_nodes(n);
+            let out_nodes = cfg.out_neighbors(n);
             if out_nodes.len() == 1 {
                 let o = out_nodes[0];
                 let ed = cfg.get_edge(n, o);
@@ -59,7 +59,7 @@ where
         while let Some((n, pair)) = Self::find_removable_empty_nodes(cfg) {
             if n == pair.0 {
                 let in_nodes = cfg
-                    .in_nodes(&n)
+                    .in_neighbors(&n)
                     .into_iter()
                     .map(|n| n.clone())
                     .collect::<Vec<_>>();
@@ -70,7 +70,7 @@ where
             } else {
                 // n == pair.1
                 let out_nodes = cfg
-                    .out_nodes(&n)
+                    .out_neighbors(&n)
                     .into_iter()
                     .map(|n| n.clone())
                     .collect::<Vec<_>>();

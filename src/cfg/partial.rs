@@ -3,7 +3,7 @@
 
 use crate::ast;
 use crate::cfg::def;
-use crate::cfg::def::{Edge, CFG};
+use crate::cfg::def::{Edge, Graph, CFG};
 use crate::consts;
 use crate::ir;
 use crate::semantic;
@@ -150,7 +150,7 @@ pub struct CFGPartialBuild<'s> {
 }
 
 fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
-    let out_nodes = cfg.out_nodes(n);
+    let out_nodes = cfg.out_neighbors(n);
     if out_nodes.len() == 1 {
         let bb_next = out_nodes[0].get_label();
         let edge = cfg.get_edge(n, out_nodes[0]).unwrap();
@@ -237,7 +237,7 @@ impl<'s> CFGPartialBuild<'s> {
                     partial_bb.push_stmt(ir::Statement::Br(br));
                 }
                 full_cfg.insert_node(label.get_label(), Rc::new(RefCell::new(partial_bb)));
-                for dst in partial_cfg.out_nodes(label) {
+                for dst in partial_cfg.out_neighbors(label) {
                     let edge = partial_cfg.get_edge(label, dst).unwrap();
                     full_cfg.insert_edge(label.get_label(), dst.get_label(), edge.clone());
                 }
@@ -355,7 +355,7 @@ impl<'s> CFGPartialBuild<'s> {
     fn replace_cfg_label(&self, replace: Label, with: Label) {
         self.mut_cfg(|cfg| {
             let in_nodes = cfg
-                .in_nodes(&replace)
+                .in_neighbors(&replace)
                 .into_iter()
                 .map(|n| *n)
                 .collect::<Vec<_>>();
@@ -364,7 +364,7 @@ impl<'s> CFGPartialBuild<'s> {
                 cfg.insert_edge(i, with, ed);
             }
             let out_nodes = cfg
-                .out_nodes(&replace)
+                .out_neighbors(&replace)
                 .into_iter()
                 .map(|n| *n)
                 .collect::<Vec<_>>();
