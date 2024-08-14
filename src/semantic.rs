@@ -103,12 +103,12 @@ impl ProgramSymbols {
     }
 
     fn add_import(&mut self, imp: &ImportDecl) -> Result<(), Error> {
-        let is_new = self.imports.insert(imp.id.id.clone());
+        let is_new = self.imports.insert(imp.id.str.clone());
         if !is_new {
             Err(err_span!(
                 imp.span,
                 "Imported method {} is a duplicate.",
-                imp.id.id
+                imp.id.str
             ))
         } else {
             Ok(())
@@ -116,12 +116,12 @@ impl ProgramSymbols {
     }
 
     fn add_method(&mut self, m: &MethodDecl) -> Result<(), Error> {
-        let is_new = self.methods.insert(m.id.id.clone(), m.clone());
+        let is_new = self.methods.insert(m.id.str.clone(), m.clone());
         if is_new.is_some() {
             Err(err_span!(
                 m.span,
                 "Duplicate method declaration for {}.",
-                m.id.id
+                m.id.str
             ))
         } else {
             Ok(())
@@ -130,19 +130,19 @@ impl ProgramSymbols {
 
     fn add_variable(&mut self, scope: &Scope, var: &FieldDecl) -> Result<(), Error> {
         if let Some(table) = self.variables.get_mut(scope) {
-            if let Some(old) = table.variables.insert(var.id.id.clone(), var.clone()) {
+            if let Some(old) = table.variables.insert(var.id.str.clone(), var.clone()) {
                 if let Some(span) = old.span {
                     Err(err_span!(
                         var.span,
                         "Dupilcate declaration for {}, previous at {}",
-                        var.id.id,
+                        var.id.str,
                         span
                     ))
                 } else {
                     Err(err_span!(
                         var.span,
                         "Dupilcate declaration for {}, previous declation unlocatable",
-                        var.id.id
+                        var.id.str
                     ))
                 }
             } else {
@@ -285,7 +285,7 @@ impl<'p> SemanticChecker<'p> {
         }
     }
     fn check_method_decl(&self, m: &mut MethodDecl) {
-        *self.current_method.borrow_mut() = Some(m.id.id.clone());
+        *self.current_method.borrow_mut() = Some(m.id.str.clone());
         self.check_block(&mut m.block);
         *self.current_method.borrow_mut() = None;
     }
@@ -368,7 +368,7 @@ impl<'p> SemanticChecker<'p> {
                         *span,
                         "Type {} returned, but method {} expects {}.",
                         return_ty,
-                        m.id.id,
+                        m.id.str,
                         m.ty
                     ));
                 }
@@ -400,12 +400,12 @@ impl<'p> SemanticChecker<'p> {
     }
 
     fn check_method_call(&self, c: &mut MethodCall, span: &Option<SrcSpan>) -> Type {
-        let method = self.symbols.find_method_decl(c.name.id.as_str());
+        let method = self.symbols.find_method_decl(c.name.str.as_str());
         if method.is_none() {
             self.err(err_span!(
                 *span,
                 "Unable to find method declaration {}.",
-                c.name.id
+                c.name.str
             ));
             return Type::Void;
         }
@@ -447,7 +447,7 @@ impl<'p> SemanticChecker<'p> {
                             self.err(err_span!(
                                 id.span,
                                 "Indexing non-array type variable {}",
-                                id.id
+                                id.str
                             ));
                         }
                     };
@@ -478,7 +478,7 @@ impl<'p> SemanticChecker<'p> {
                             self.err(err_span!(
                                 e.span,
                                 "Trying to get len of non-array {}",
-                                id.id
+                                id.str
                             ));
                             Type::Int
                         }
@@ -545,12 +545,12 @@ impl<'p> SemanticChecker<'p> {
     fn find_var_decl(&self, id: &ID) -> Option<&FieldDecl> {
         let arr_decl = self
             .symbols
-            .find_var_decl(&self.current_block(), id.id.as_str());
+            .find_var_decl(&self.current_block(), id.str.as_str());
         if arr_decl.is_none() {
             self.err(err_span!(
                 id.span,
                 "Variable {} was not found in this scope.",
-                id.id
+                id.str
             ));
             None
         } else {

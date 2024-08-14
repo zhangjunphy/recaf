@@ -1,6 +1,6 @@
 use crate::ast;
 use crate::source_pos::SrcSpan;
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -14,7 +14,7 @@ pub enum Locality {
 
 #[derive(Clone)]
 pub struct Var {
-    pub id: usize,
+    pub id: u64,
     pub ty: ast::Type,
     pub decl: Option<ast::FieldDecl>,
     pub span: Option<SrcSpan>,
@@ -48,14 +48,14 @@ impl Eq for Var {}
 #[derive(Clone)]
 pub struct VVar {
     pub var: Rc<Var>,
-    pub version: RefCell<usize>,
+    pub version: Cell<u64>,
 }
 
 impl VVar {
-    pub fn new(var: Rc<Var>, version: usize) -> Self {
+    pub fn new(var: Rc<Var>, version: u64) -> Self {
         VVar {
             var,
-            version: RefCell::new(version),
+            version: Cell::new(version),
         }
     }
 }
@@ -66,7 +66,7 @@ impl Hash for VVar {
         H: Hasher,
     {
         self.var.id.hash(state);
-        self.version.borrow().hash(state);
+        self.version.get().hash(state);
     }
 }
 
@@ -78,7 +78,7 @@ impl PartialEq for VVar {
 
 impl fmt::Display for VVar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "v{}.{}", self.var.id, self.version.borrow())
+        write!(f, "v{}.{}", self.var.id, self.version.get())
     }
 }
 
@@ -117,11 +117,11 @@ impl fmt::Display for Val {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Label {
-    pub id: usize,
+    pub id: u64,
 }
 
 impl Label {
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: u64) -> Self {
         Label { id }
     }
 }
@@ -132,8 +132,8 @@ impl fmt::Display for Label {
     }
 }
 
-impl From<usize> for Label {
-    fn from(id: usize) -> Self {
+impl From<u64> for Label {
+    fn from(id: u64) -> Self {
         Label { id }
     }
 }
@@ -205,7 +205,7 @@ pub enum Statement {
     Alloca {
         dst: VVar,
         ty: ast::Type,
-        size: Option<usize>,
+        size: Option<u64>,
     },
     Load {
         dst: VVar,

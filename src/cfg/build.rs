@@ -15,9 +15,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 struct VarVersionCache<'s> {
-    pub count: HashMap<ir::Var, usize>,
-    pub latest_version_in_scope: HashMap<ir::Var, HashMap<ast::Scope, usize>>,
-    pub latest_version_in_bb: HashMap<ir::Var, HashMap<ir::Label, usize>>,
+    pub count: HashMap<ir::Var, u64>,
+    pub latest_version_in_scope: HashMap<ir::Var, HashMap<ast::Scope, u64>>,
+    pub latest_version_in_bb: HashMap<ir::Var, HashMap<ir::Label, u64>>,
     pub symbols: &'s semantic::ProgramSymbols,
 }
 
@@ -31,7 +31,7 @@ impl<'s> VarVersionCache<'s> {
         }
     }
 
-    fn new_version(&mut self, var: &ir::Var, scope: ast::Scope, bb: ir::Label) -> usize {
+    fn new_version(&mut self, var: &ir::Var, scope: ast::Scope, bb: ir::Label) -> u64 {
         let count = self.count.entry(var.clone()).or_insert(0);
         let version = *count;
         *count += 1;
@@ -48,12 +48,12 @@ impl<'s> VarVersionCache<'s> {
         version
     }
 
-    fn latest_version_in_bb(&self, var: &ir::Var, bb: ir::Label) -> Option<usize> {
+    fn latest_version_in_bb(&self, var: &ir::Var, bb: ir::Label) -> Option<u64> {
         let var_version = self.latest_version_in_bb.get(&var)?;
         var_version.get(&bb).map(|b| *b)
     }
 
-    fn latest_version_in_scope(&self, var: &ir::Var, scope: ast::Scope) -> Option<usize> {
+    fn latest_version_in_scope(&self, var: &ir::Var, scope: ast::Scope) -> Option<u64> {
         let var_version = self.latest_version_in_scope.get(&var)?;
         let mut scope = Some(scope);
         while let Some(s) = scope {
@@ -131,7 +131,7 @@ impl<'s> CFGBuild<'s> {
                 ast::Scope::new(consts::ROOT_SCOPE_ID),
                 ir::Label::new(0),
             );
-            *g.version.borrow_mut() = version;
+            g.version.set(version);
         }
     }
 
@@ -143,11 +143,11 @@ impl<'s> CFGBuild<'s> {
             let bb = cfg.get_node(&l).unwrap();
             for i in 0..bb.borrow().args.len() {
                 let var = &bb.borrow().args[i].var;
-                let version = self
-                    .var_versions
-                    .borrow_mut()
-                    .new_version(var, bb.borrow().ast_scope, l);
-                *bb.borrow().args[i].version.borrow_mut() = version;
+                let version =
+                    self.var_versions
+                        .borrow_mut()
+                        .new_version(var, bb.borrow().ast_scope, l);
+                bb.borrow().args[i].version.set(version);
             }
 
             for i in 0..bb.borrow().statements.len() {
@@ -157,14 +157,15 @@ impl<'s> CFGBuild<'s> {
                         .borrow()
                         .latest_version_in_scope(&read.var, bb.borrow().ast_scope)
                         .unwrap();
-                    *read.version.borrow_mut() = version;
+                    read.version.set(version);
                 }
                 for write in &mut bb.borrow().statements[i].write_to_var() {
-                    let version = self
-                        .var_versions
-                        .borrow_mut()
-                        .new_version(&write.var, bb.borrow().ast_scope, l);
-                    *write.version.borrow_mut() = version;
+                    let version = self.var_versions.borrow_mut().new_version(
+                        &write.var,
+                        bb.borrow().ast_scope,
+                        l,
+                    );
+                    write.version.set(version);
                 }
             }
 
@@ -186,7 +187,7 @@ impl<'s> CFGBuild<'s> {
                                     .latest_version_in_scope(&v.var, bb.borrow().ast_scope)
                                     .unwrap();
                                 let res = v.clone();
-                                *res.version.borrow_mut() = version;
+                                res.version.set(version);
                                 ir::Val::Var(res)
                             }
                         };
@@ -202,7 +203,7 @@ impl<'s> CFGBuild<'s> {
                                     .latest_version_in_scope(&v.var, bb.borrow().ast_scope)
                                     .unwrap();
                                 let res = v.clone();
-                                *res.version.borrow_mut() = version;
+                                res.version.set(version);
                                 ir::Val::Var(res)
                             }
                         };

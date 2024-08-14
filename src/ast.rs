@@ -4,17 +4,17 @@ use std::io;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Scope {
-    pub id: usize,
+    pub id: u64,
 }
 
 impl Scope {
-    pub fn new(id: usize) -> Scope {
+    pub fn new(id: u64) -> Scope {
         Scope { id }
     }
 }
 
-impl From<usize> for Scope {
-    fn from(id: usize) -> Self {
+impl From<u64> for Scope {
+    fn from(id: u64) -> Self {
         Scope { id }
     }
 }
@@ -72,7 +72,7 @@ pub struct Expr {
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct ID {
-    pub id: String,
+    pub str: String,
     pub span: Option<SrcSpan>,
 }
 
@@ -294,19 +294,19 @@ impl fmt::Display for Type {
 
 impl fmt::Display for ImportDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "import {};", self.id.id.as_str())
+        write!(f, "import {};", self.id.str.as_str())
     }
 }
 
 impl fmt::Display for FieldDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {};", self.ty, self.id.id.as_str())
+        write!(f, "{} {};", self.ty, self.id.str.as_str())
     }
 }
 
 impl fmt::Display for ID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.id)
+        write!(f, "{}", self.str)
     }
 }
 
@@ -406,7 +406,7 @@ where
             .map(|arg| format!("{}", arg))
             .collect();
         size += self.indented_write(
-            format!("{} {} ({}) {{", m.ty, m.id.id, args_str.join(", ")).as_str(),
+            format!("{} {} ({}) {{", m.ty, m.id.str, args_str.join(", ")).as_str(),
         )?;
         size += self.visit_block(&m.block)?;
         size += self.indented_write("}")?;

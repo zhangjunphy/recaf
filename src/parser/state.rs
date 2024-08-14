@@ -3,7 +3,7 @@ use crate::source_pos::SrcSpan;
 use std::cell::RefCell;
 
 pub struct ParserState {
-    block_count: RefCell<usize>,
+    block_count: RefCell<u64>,
 }
 
 impl ParserState {

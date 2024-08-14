@@ -43,36 +43,12 @@ impl fmt::Display for Label {
     }
 }
 
-type PartialCFG = CFG<Label, ir::BasicBlock, Edge>;
-
-pub struct Program {
-    pub imports: Vec<String>,
-    pub globals: Vec<ir::VVar>,
-    pub cfgs: HashMap<String, PartialCFG>,
-}
-
-impl Program {
-    pub fn new() -> Self {
-        Program {
-            imports: Vec::new(),
-            globals: Vec::new(),
-            cfgs: HashMap::new(),
-        }
-    }
-}
-
-impl Default for Program {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 pub struct VarCache {
     pub var_to_symbol: HashMap<ir::VVar, (ast::Scope, String)>,
     pub symbol_to_var: HashMap<(ast::Scope, String), ir::VVar>,
     pub vars: Vec<ir::VVar>,
 
-    pub next_var_id: usize,
+    pub next_var_id: u64,
 }
 
 impl VarCache {
@@ -89,7 +65,7 @@ impl VarCache {
         self.symbol_to_var.get(&(ast_scope, symbol.to_string()))
     }
 
-    fn new_var_id(&mut self) -> usize {
+    fn new_var_id(&mut self) -> u64 {
         let id = self.next_var_id;
         self.next_var_id += 1;
         id
@@ -115,9 +91,9 @@ impl VarCache {
         );
         if let Some(d) = &decl {
             self.var_to_symbol
-                .insert(var.clone(), (ast_scope, d.id.id.clone()));
+                .insert(var.clone(), (ast_scope, d.id.str.clone()));
             self.symbol_to_var
-                .insert((ast_scope, d.id.id.clone()), var.clone());
+                .insert((ast_scope, d.id.str.clone()), var.clone());
         }
         self.vars.push(var.clone());
         var
@@ -143,10 +119,10 @@ impl VarCache {
         if let Some(d) = &decl {
             self.var_to_symbol.insert(
                 var.clone(),
-                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.id.clone()),
+                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.str.clone()),
             );
             self.symbol_to_var.insert(
-                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.id.clone()),
+                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.str.clone()),
                 var.clone(),
             );
         }
@@ -156,17 +132,21 @@ impl VarCache {
 }
 
 pub struct BuildState {
-    next_bb_id: usize,
+    next_bb_id: u64,
     current_ast_scope: ast::Scope,
     current_cfg: RefCell<Option<PartialCFG>>,
     current_block: RefCell<Option<ir::BasicBlock>>,
     var_cache: VarCache,
 }
 
+type PartialCFG = CFG<Label, ir::BasicBlock, Edge>;
+
 pub struct CFGPartialBuild<'s> {
     pub symbols: &'s semantic::ProgramSymbols,
     pub state: RefCell<BuildState>,
-    pub program: RefCell<Program>,
+
+    pub globals: RefCell<Vec<ir::VVar>>,
+    pub cfgs: RefCell<HashMap<String, PartialCFG>>,
 }
 
 fn node_br(cfg: &PartialCFG, n: &Label) -> Option<ir::Branch> {
@@ -220,30 +200,31 @@ impl<'s> CFGPartialBuild<'s> {
         CFGPartialBuild {
             symbols,
             state: RefCell::new(BuildState {
-                next_bb_id: 1, // reserve block 0 for global variables
+                next_bb_id: consts::ROOT_BB_ID + 1, // reserve block 0 for global variables
                 current_ast_scope: ast::Scope::new(consts::ROOT_SCOPE_ID),
                 current_cfg: RefCell::new(None),
                 current_block: RefCell::new(None),
                 var_cache: VarCache::new(),
             }),
-            program: RefCell::new(Program::new()),
+            globals: RefCell::new(Vec::new()),
+            cfgs: RefCell::new(HashMap::new()),
         }
     }
 
     pub fn build(&mut self, p: &ast::Program) -> def::Program {
         self.visit_program(p);
-        let p = self.program.take();
+        //let p = self.program.take();
 
         let mut res = def::Program {
-            imports: p.imports,
-            globals: p.globals,
+            imports: p.imports.iter().map(|d| d.id.str.clone()).collect(),
+            globals: self.globals.take(),
             cfgs: HashMap::new(),
         };
 
         // To process p into the final cfg form, we
         // 1. Add Br statement to end of all basic blocks with outgoing edges
         // 2. Convert partial::Label to ir::Label directly as they should all have be filled.
-        for (name, partial_cfg) in &p.cfgs {
+        for (name, partial_cfg) in &*self.cfgs.borrow() {
             let mut full_cfg = CFG::<ir::Label, ir::BasicBlock, def::Edge>::new(
                 partial_cfg.name.clone(),
                 partial_cfg.entry.get_label(),
@@ -268,7 +249,7 @@ impl<'s> CFGPartialBuild<'s> {
         res
     }
 
-    fn new_block_id(&self) -> usize {
+    fn new_block_id(&self) -> u64 {
         let id = self.state.borrow().next_bb_id;
         self.state.borrow_mut().next_bb_id += 1;
         id
@@ -412,7 +393,7 @@ impl<'s> CFGPartialBuild<'s> {
         let mut scope = self.state.borrow().current_ast_scope;
         loop {
             let var = self
-                .query_cache(|cache| cache.lookup_var(scope, id.id.as_str()).map(|v| v.clone()));
+                .query_cache(|cache| cache.lookup_var(scope, id.str.as_str()).map(|v| v.clone()));
             if let Some(v) = var {
                 return v;
             } else {
@@ -426,26 +407,21 @@ impl<'s> CFGPartialBuild<'s> {
     }
 
     fn visit_program(&mut self, p: &ast::Program) {
-        // Handle imports
-        for imp in &p.imports {
-            self.program.borrow_mut().imports.push(imp.id.id.clone());
-        }
-
         // Handle globals
         for fld in &p.fields {
-            self.program.borrow_mut().globals.push(self.new_global(fld));
+            self.globals.borrow_mut().push(self.new_global(fld));
         }
 
         // Build cfg for each mehtod
         for m in &p.methods {
             let cfg = self.visit_method(m);
-            self.program.borrow_mut().cfgs.insert(m.id.id.clone(), cfg);
+            self.cfgs.borrow_mut().insert(m.id.str.clone(), cfg);
         }
     }
 
     fn visit_method(&mut self, m: &ast::MethodDecl) -> PartialCFG {
         self.state.borrow().current_cfg.replace(Some(CFG::new(
-            m.id.id.clone(),
+            m.id.str.clone(),
             Label::MethodEntry,
             Label::MethodExit,
         )));
@@ -500,7 +476,7 @@ impl<'s> CFGPartialBuild<'s> {
                 let args = c.arguments.iter().map(|e| self.visit_expr(&e)).collect();
                 self.push_stmt(ir::Statement::Call {
                     dst: None,
-                    method: c.name.id.clone(),
+                    method: c.name.str.clone(),
                     arguments: args,
                 });
             }
@@ -588,7 +564,7 @@ impl<'s> CFGPartialBuild<'s> {
             ast::Expr_::Location(l) => self.read_from_location(l),
             ast::Expr_::MethodCall(c) => {
                 let args = c.arguments.iter().map(|e| self.visit_expr(&e)).collect();
-                let ty = match &self.symbols.find_method_decl(c.name.id.as_str()).unwrap() {
+                let ty = match &self.symbols.find_method_decl(c.name.str.as_str()).unwrap() {
                     semantic::MethodOrImport::Method(decl) => Some(decl.ty.clone()),
                     _ => None,
                 };
@@ -596,7 +572,7 @@ impl<'s> CFGPartialBuild<'s> {
                 let local = self.new_temp(&ty.unwrap());
                 self.push_stmt(ir::Statement::Call {
                     dst: Some(local.clone()),
-                    method: c.name.id.clone(),
+                    method: c.name.str.clone(),
                     arguments: args,
                 });
                 ir::Val::Var(local)
@@ -605,7 +581,7 @@ impl<'s> CFGPartialBuild<'s> {
             ast::Expr_::Len(id) => {
                 let ty = &self
                     .symbols
-                    .find_var_decl(&self.get_scope(), id.id.as_str())
+                    .find_var_decl(&self.get_scope(), id.str.as_str())
                     .unwrap()
                     .ty;
                 ir::Val::Imm(ast::Literal::Int(ty.array_len()))

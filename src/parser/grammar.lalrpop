@@ -8,7 +8,7 @@ use crate::parser::ParserState;
 grammar(state: &ParserState);
 
 pub ID: ID = <start:@L> <id:"id"> <end:@R> =>
-    ID{ id: id, span: Some(SrcSpan::new(start, end)) };
+    ID{ str: id, span: Some(SrcSpan::new(start, end)) };
 
 pub Int: i64 = {
     "dec" => i64::from_str(<>.as_str()).unwrap(),
