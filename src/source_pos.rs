@@ -9,7 +9,7 @@ pub struct Pos {
 
 impl Pos {
     pub fn new(offset: usize, row: usize, col: usize) -> Pos {
-        Pos{offset, row, col}
+        Pos { offset, row, col }
     }
 }
 
@@ -26,8 +26,8 @@ pub struct SrcSpan {
 }
 
 impl SrcSpan {
-    pub fn new(start: Pos, end : Pos) -> SrcSpan {
-        SrcSpan{start, end}
+    pub fn new(start: Pos, end: Pos) -> SrcSpan {
+        SrcSpan { start, end }
     }
 }
 

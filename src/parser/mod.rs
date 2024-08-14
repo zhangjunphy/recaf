@@ -21,7 +21,10 @@ pub fn parse(content: &String) -> Result<Program, Error> {
         ParseError::InvalidToken { location } => {
             err_span!(Some(SrcSpan::new(*location, *location)), "{}", e)
         }
-        ParseError::UnrecognizedEof { location, expected:_ } => {
+        ParseError::UnrecognizedEof {
+            location,
+            expected: _,
+        } => {
             err_span!(Some(SrcSpan::new(*location, *location)), "{}", e)
         }
         ParseError::UnrecognizedToken {

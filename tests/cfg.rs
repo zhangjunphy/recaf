@@ -1,4 +1,3 @@
 mod common;
 
-mod cfg {
-}
+mod cfg {}

@@ -1,6 +1,6 @@
 use clap::Parser;
 use recaf::ast::ASTPrinter;
-use recaf::cfg::{draw, optimize, optimize::CFGOptimizer, build};
+use recaf::cfg::{build, draw, optimize, optimize::CFGOptimizer};
 use recaf::cli::{Args, Stage};
 use recaf::parser::lexer::Lexer;
 use recaf::semantic;

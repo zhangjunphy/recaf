@@ -1,10 +1,10 @@
-pub mod error;
-pub mod parser;
-pub mod source_pos;
-pub mod cli;
 pub mod ast;
-pub mod semantic;
-pub mod consts;
-pub mod ir;
 pub mod cfg;
+pub mod cli;
+pub mod consts;
 pub mod dominator;
+pub mod error;
+pub mod ir;
+pub mod parser;
+pub mod semantic;
+pub mod source_pos;

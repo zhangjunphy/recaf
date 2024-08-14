@@ -47,7 +47,7 @@ mod tests {
                     }
                     _ => panic!(),
                 }
-            },
+            }
             Err(errors) => panic!("{:?}", errors),
         }
     }
