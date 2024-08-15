@@ -1,4 +1,5 @@
 use super::def::*;
+use crate::graph::Graph;
 use crate::ir;
 
 pub trait CFGOptimizer {
@@ -28,7 +29,7 @@ impl RemoveEmptyNodes {
     ) -> Option<(ir::Label, ir::Label)> {
         let empty_nodes = cfg
             .nodes()
-            .iter()
+            .into_iter()
             .filter(|(_, n)| {
                 let nd = (*n).borrow();
                 nd.args.is_empty() && Self::br_only(&nd.statements)
@@ -51,7 +52,7 @@ impl RemoveEmptyNodes {
             }
             let ed = cfg.get_edge(n, o);
             if matches!(*ed.unwrap().borrow(), Edge::Continue) {
-                return Some((n.clone(), o.clone()));
+                return Some(((*n).clone(), o.clone()));
             }
         }
         None

@@ -1,3 +1,5 @@
+use crate::ast;
+use crate::graph::Graph;
 use crate::ir;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -5,19 +7,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
-
-pub trait Graph<Ti, Tn, Te> {
-    fn out_neighbors(&self, n: &Ti) -> Vec<&Ti>;
-    fn in_neighbors(&self, n: &Ti) -> Vec<&Ti>;
-    fn get_node(&self, n: &Ti) -> Option<&Tn>;
-    fn get_edge(&self, s: &Ti, data: &Ti) -> Option<&Te>;
-    fn insert_node(&mut self, n: Ti, data: Tn) -> Option<Tn>;
-    fn insert_edge(&mut self, src: Ti, dst: Ti, data: Te) -> Option<Te>;
-    fn contains_node(&self, n: &Ti) -> bool;
-    fn contains_edge(&self, src: &Ti, dst: &Ti) -> bool;
-    fn remove_node(&mut self, n: &Ti) -> Option<Tn>;
-    fn remove_edge(&mut self, src: &Ti, dst: &Ti) -> Option<Te>;
-}
 
 pub struct CFG<Ti, Tn, Te>
 where
@@ -103,6 +92,20 @@ where
         let edges = self.edges.entry(src).or_insert(BTreeMap::new());
         edges.insert(dst, data)
     }
+
+    fn nodes(&self) -> Vec<(&Ti, &Rc<RefCell<Tn>>)> {
+        self.nodes.iter().map(|(ix, n)| (ix, n)).collect()
+    }
+
+    fn edges(&self) -> Vec<((&Ti, &Ti), &Rc<RefCell<Te>>)> {
+        let mut res = Vec::new();
+        self.edges.iter().for_each(|(s, map_to)| {
+            map_to.iter().for_each(|(t, e)| {
+                res.push(((s, t), e));
+            })
+        });
+        res
+    }
 }
 
 impl<Ti, Tn, Te> CFG<Ti, Tn, Te>
@@ -118,14 +121,6 @@ where
             edges: BTreeMap::new(),
             redges: BTreeMap::new(),
         }
-    }
-
-    pub fn nodes(&self) -> &BTreeMap<Ti, Rc<RefCell<Tn>>> {
-        &self.nodes
-    }
-
-    pub fn edges(&self) -> &BTreeMap<Ti, BTreeMap<Ti, Rc<RefCell<Te>>>> {
-        &self.edges
     }
 }
 
@@ -149,4 +144,87 @@ pub struct Program {
     pub imports: Vec<String>,
     pub globals: Vec<ir::VVar>,
     pub cfgs: HashMap<String, CFG<ir::Label, ir::BasicBlock, Edge>>,
+}
+
+impl Program {
+    fn linearize_cfg(
+        cfg: &CFG<ir::Label, ir::BasicBlock, Edge>,
+        decl: &ast::MethodDecl,
+    ) -> ir::Function {
+        // NOTE: Arguments of the entry block should just be the function arguments.
+        let args = cfg.get_node(&cfg.entry).unwrap().borrow().args.clone();
+
+        // Do a toposort of cfg nodes, but try to put nodes in a
+        // sequential jmp chain close to minimize jmps.
+        // Also we ignore back edges introduced by loops so it could behave like
+        // an acyclic graph.
+        let mut body = Vec::new();
+        {
+            let mut in_degree: BTreeMap<&ir::Label, usize> = BTreeMap::new();
+            let mut visited: BTreeSet<_> = BTreeSet::new();
+            let nodes = cfg.nodes();
+            for (n, _) in &nodes {
+                // NOTE: Only count nodes with smaller idx to ignore back edges.
+                in_degree.insert(n, cfg.in_neighbors(n).into_iter().filter(|i| i < n).count());
+            }
+
+            let mut last_node_opt = None;
+            while body.len() < nodes.len() {
+                // Favoring any direct offspring of the last node to reduce jmp.
+                let mut next_opt = None;
+                if let Some(last_node) = last_node_opt {
+                    for out in cfg.out_neighbors(last_node) {
+                        if !visited.contains(out) && in_degree.get(out).is_some_and(|d| *d == 0) {
+                            next_opt = Some(out);
+                            break;
+                        }
+                    }
+                }
+                if next_opt.is_none() {
+                    if let Some((ix, _)) = in_degree
+                        .iter()
+                        .find(|(ix, d)| **d == 0 && !visited.contains(**ix))
+                    {
+                        next_opt = Some(ix);
+                    }
+                }
+
+                if let Some(next) = next_opt {
+                    last_node_opt = Some(next);
+                    visited.insert(next);
+                    body.push(cfg.get_node(next).unwrap().take());
+                    for o in cfg.out_neighbors(next) {
+                        // Requiring o > next filters out backward edges.
+                        // As we did not count them in in_degree in the first place.
+                        if o > next {
+                            in_degree.entry(o).and_modify(|c| *c -= 1);
+                        }
+                    }
+                } else {
+                    panic!("Control flow graph is cyclic after dropping backward edges.")
+                }
+            }
+        }
+
+        ir::Function {
+            name: cfg.name.clone(),
+            args,
+            ty: decl.ty.clone(),
+            body,
+        }
+    }
+
+    pub fn linearize(self, p: &ast::Program) -> ir::Module {
+        let mut functions = Vec::new();
+        for m in &p.methods {
+            let cfg = self.cfgs.get(&m.id.str).unwrap();
+            functions.push(Self::linearize_cfg(cfg, m));
+        }
+
+        ir::Module {
+            imports: self.imports,
+            globals: self.globals,
+            functions,
+        }
+    }
 }

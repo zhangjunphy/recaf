@@ -18,6 +18,7 @@ fn main() {
         Stage::Lex => lex(&file),
         Stage::Parse => parse(&file),
         Stage::Cfg => cfg(&file),
+        Stage::Ir => ir(&file),
     }
 }
 
@@ -97,4 +98,36 @@ fn cfg(file: &String) {
 
     let d = draw::CFGDraw::new(p.cfgs.get("main").unwrap());
     println!("{}", d.draw());
+}
+
+fn ir(file: &String) {
+    let mut content = String::new();
+    let mut f = match File::open(file) {
+        Err(msg) => panic!("Could not open {}: {}", file, msg),
+        Ok(file) => file,
+    };
+    if let Err(msg) = f.read_to_string(&mut content) {
+        panic!("Error reading {}: {}", file, msg);
+    }
+
+    let mut program = match recaf::parser::parse(&content) {
+        Ok(program) => program,
+        Err(err) => {
+            panic!("{}", err)
+        }
+    };
+
+    let symbols = match semantic::check(&mut program) {
+        Err(errors) => panic!("{:?}", errors),
+        Ok(s) => s,
+    };
+
+    let build = build::CFGBuild::new(&symbols);
+    let mut p = build.build(&program);
+
+    let mut optimizer = optimize::RemoveEmptyNodes {};
+    optimizer.run(p.cfgs.get_mut("main").unwrap());
+
+    let ir = p.linearize(&program);
+    println!("{}", ir);
 }

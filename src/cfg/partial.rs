@@ -3,8 +3,9 @@
 
 use crate::ast;
 use crate::cfg::def;
-use crate::cfg::def::{Edge, Graph, CFG};
+use crate::cfg::def::{Edge, CFG};
 use crate::consts;
+use crate::graph::Graph;
 use crate::ir;
 use crate::semantic;
 use crate::source_pos::SrcSpan;
@@ -213,7 +214,6 @@ impl<'s> CFGPartialBuild<'s> {
 
     pub fn build(&mut self, p: &ast::Program) -> def::Program {
         self.visit_program(p);
-        //let p = self.program.take();
 
         let mut res = def::Program {
             imports: p.imports.iter().map(|d| d.id.str.clone()).collect(),

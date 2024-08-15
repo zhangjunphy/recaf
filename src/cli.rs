@@ -5,6 +5,7 @@ pub enum Stage {
     Lex,
     Parse,
     Cfg,
+    Ir,
 }
 
 #[derive(Parser)]
@@ -12,6 +13,6 @@ pub enum Stage {
 pub struct Args {
     pub file: Option<String>,
 
-    #[arg(value_enum, short='t', long, default_value_t=Stage::Parse)]
+    #[arg(value_enum, short='t', long, default_value_t=Stage::Ir)]
     pub stage: Stage,
 }

@@ -1,4 +1,5 @@
 use super::def;
+use crate::graph::Graph as G;
 use graphviz_rust::attributes::*;
 use graphviz_rust::dot_generator::*;
 use graphviz_rust::dot_structures::*;
@@ -43,10 +44,8 @@ where
         for (ti, node) in self.cfg.nodes() {
             stmts.push(self.draw_node(ti, node));
         }
-        for (src, dests) in self.cfg.edges() {
-            for (dst, edge) in dests {
-                stmts.push(self.draw_edge(src, dst, &edge.borrow()));
-            }
+        for ((src, dst), edge) in self.cfg.edges() {
+            stmts.push(self.draw_edge(src, dst, &edge.borrow()));
         }
         Subgraph {
             id: Id::Plain(self.cfg.name.clone()),

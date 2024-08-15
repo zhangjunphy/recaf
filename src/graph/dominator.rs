@@ -1,9 +1,9 @@
 //! Build a dominator tree based on the simple IBFS algorithm in
 //! https://jgaa.info/accepted/2006/GeorgiadisTarjanWerneck2006.10.1.pdf
 //! This should be sufficient for our current needs. Later we could
-//! considier implementing the more effiencet SNCA algorithm.
+//! consider implementing the more effiencet SNCA algorithm.
 
-use crate::cfg::def::Graph;
+use super::Graph;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub struct Node<'a, Ti>

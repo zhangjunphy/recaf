@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::source_pos::SrcSpan;
 use std::cell::Cell;
-use std::collections::{HashSet, HashMap};
+use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -434,7 +434,7 @@ impl fmt::Display for BasicBlock {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "<id: {}, args: ({})>\n",
+            "<label: {}, args: ({})>\n",
             self.label,
             self.args
                 .iter()
@@ -456,7 +456,47 @@ pub struct Function {
     pub body: Vec<BasicBlock>,
 }
 
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "define {} {}({}):\n",
+            self.ty,
+            self.name,
+            self.args
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        for bb in &self.body {
+            write!(f, "{}\n", bb)?;
+        }
+        Ok(())
+    }
+}
+
 pub struct Module {
+    pub imports: Vec<String>,
     pub globals: Vec<VVar>,
-    pub functions: HashMap<String, Function>,
+    pub functions: Vec<Function>,
+}
+
+impl fmt::Display for Module {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for i in &self.imports {
+            write!(f, "import {}\n", i)?;
+        }
+        write!(f, "\n")?;
+
+        for g in &self.globals {
+            write!(f, "{} = global {}\n", g, g.var.ty)?;
+        }
+        write!(f, "\n")?;
+
+        for func in &self.functions {
+            write!(f, "{}", func)?;
+        }
+        Ok(())
+    }
 }

@@ -1,5 +1,6 @@
-use recaf::cfg::def::{CFG, Graph};
-use recaf::dominator::*;
+use recaf::cfg::def::CFG;
+use recaf::graph::dominator::*;
+use recaf::graph::Graph;
 use recaf::ir;
 use std::cell::RefCell;
 use std::rc::Rc;

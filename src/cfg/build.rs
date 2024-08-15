@@ -3,11 +3,12 @@
 //! 2. Insert missing basic block parameters
 
 use super::def;
-use super::def::{Edge, CFG, Graph};
+use super::def::{Edge, CFG};
 use super::partial;
 use crate::ast;
 use crate::consts;
-use crate::dominator;
+use crate::graph::dominator;
+use crate::graph::Graph;
 use crate::ir;
 use crate::semantic;
 use std::cell::RefCell;
