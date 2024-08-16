@@ -6,13 +6,13 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Locality {
     Global,
     Local,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Var {
     pub id: u64,
     pub ty: ast::Type,
@@ -45,7 +45,7 @@ impl fmt::Display for Var {
 impl Eq for Var {}
 
 /// Versioned Var.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct VVar {
     pub var: Rc<Var>,
     pub version: Cell<u64>,
@@ -499,4 +499,78 @@ impl fmt::Display for Module {
         }
         Ok(())
     }
+}
+
+pub mod visit {
+    use super::*;
+
+    pub trait Visitor {
+        fn visit_module(&mut self, m: &mut Module) {}
+        fn visit_import(&mut self, i: &mut String) {}
+        fn visit_global(&mut self, g: &mut VVar) {}
+        fn visit_function(&mut self, f: &mut Function) {}
+        fn visit_basic_block(&mut self, bb: &mut BasicBlock) {}
+        fn visit_statement(&mut self, s: &mut Statement) {}
+    }
+
+    impl dyn Visitor {
+        pub fn run(&mut self, m: &mut Module) {
+            self.visit_module(m);
+            for i in &mut m.imports {
+                self.visit_import(i);
+            }
+            for g in &mut m.globals {
+                self.visit_global(g);
+            }
+            for f in &mut m.functions {
+                self.visit_function(f);
+            }
+
+            for f in &mut m.functions {
+                for b in &mut f.body {
+                    self.visit_basic_block(b);
+                }
+            }
+
+            for f in &mut m.functions {
+                for b in &mut f.body {
+                    for s in &mut b.statements {
+                        self.visit_statement(s);
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub trait IRTransform {
+    fn run(&mut self, module: &mut Module);
+}
+
+struct StringLiteralVisitor {
+    literals: Vec<(VVar, String)>,
+}
+
+impl<'a> visit::Visitor for StringLiteralVisitor {
+    fn visit_statement(&mut self, s: &mut Statement) {
+        match s {
+            Statement::Call {
+                dst: _,
+                method: _,
+                arguments,
+            } => {
+                for a in arguments {
+                    if a.ty().is_string() {
+                    }
+                }
+            },
+            _ => (),
+        }
+    }
+}
+
+pub struct HoistStringLiteral {}
+
+impl IRTransform for HoistStringLiteral {
+    fn run(&mut self, module: &mut Module) {}
 }

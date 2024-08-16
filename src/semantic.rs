@@ -234,6 +234,9 @@ impl SymbolTableBuilder {
             Stmt_::While(w) => {
                 self.process_block(&w.block, Some(scope))?;
             }
+            Stmt_::For(f) => {
+                self.process_block(&f.block, Some(scope))?;
+            }
             _ => (),
         }
         Ok(())

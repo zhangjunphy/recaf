@@ -584,7 +584,7 @@ impl<'s> CFGPartialBuild<'s> {
                     .find_var_decl(&self.get_scope(), id.str.as_str())
                     .unwrap()
                     .ty;
-                ir::Val::Imm(ast::Literal::Int(ty.array_len()))
+                ir::Val::Imm(ast::Literal::Int(ty.array_len() as i64))
             }
             ast::Expr_::Arith(l, op, r) => {
                 let lval = self.visit_expr(l.as_ref());
@@ -734,7 +734,7 @@ impl<'s> CFGPartialBuild<'s> {
         self.push_stmt(ir::Statement::Arith {
             dst: offset_var.clone(),
             op: ast::ArithOp::Mul,
-            l: ir::Val::Imm(ast::Literal::Int(ele_ty.unwrap().size())),
+            l: ir::Val::Imm(ast::Literal::Int(ele_ty.unwrap().size() as i64)),
             r: idx_var,
         });
 

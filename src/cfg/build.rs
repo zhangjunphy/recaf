@@ -17,8 +17,8 @@ use std::rc::Rc;
 
 struct VarVersionCache<'s> {
     pub count: HashMap<ir::Var, u64>,
-    pub latest_version_in_scope: HashMap<ir::Var, HashMap<ast::Scope, u64>>,
-    pub latest_version_in_bb: HashMap<ir::Var, HashMap<ir::Label, u64>>,
+    pub var_version_in_scope: HashMap<ir::Var, HashMap<ast::Scope, u64>>,
+    pub var_version_in_bb: HashMap<ir::Var, HashMap<ir::Label, u64>>,
     pub symbols: &'s semantic::ProgramSymbols,
 }
 
@@ -26,8 +26,8 @@ impl<'s> VarVersionCache<'s> {
     fn new(symbols: &'s semantic::ProgramSymbols) -> Self {
         VarVersionCache {
             count: HashMap::new(),
-            latest_version_in_scope: HashMap::new(),
-            latest_version_in_bb: HashMap::new(),
+            var_version_in_scope: HashMap::new(),
+            var_version_in_bb: HashMap::new(),
             symbols,
         }
     }
@@ -37,25 +37,44 @@ impl<'s> VarVersionCache<'s> {
         let version = *count;
         *count += 1;
         let scope_map = self
-            .latest_version_in_scope
+            .var_version_in_scope
             .entry(var.clone())
             .or_insert(HashMap::new());
         scope_map.insert(scope, version);
         let bb_map = self
-            .latest_version_in_bb
+            .var_version_in_bb
             .entry(var.clone())
             .or_insert(HashMap::new());
         bb_map.insert(bb, version);
         version
     }
 
-    fn latest_version_in_bb(&self, var: &ir::Var, bb: ir::Label) -> Option<u64> {
-        let var_version = self.latest_version_in_bb.get(&var)?;
-        var_version.get(&bb).map(|b| *b)
+    fn latest_version_in_bb(
+        &self,
+        var: &ir::Var,
+        bb: ir::Label,
+        cfg: &CFG<ir::Label, ir::BasicBlock, Edge>,
+    ) -> Option<u64> {
+        let mut bb_opt = Some(bb);
+        // NOTE: We can do a depth-first seach as divergent control flows has been covered by
+        // bb arguments already.
+        while let Some(bb) = bb_opt {
+            let var_version = self
+                .var_version_in_bb
+                .get(&var)
+                .and_then(|m| m.get(&bb))
+                .map(|v| *v);
+            if var_version.is_some() {
+                return var_version;
+            } else {
+                bb_opt = cfg.in_neighbors(&bb).first().map(|l| **l);
+            }
+        }
+        None
     }
 
     fn latest_version_in_scope(&self, var: &ir::Var, scope: ast::Scope) -> Option<u64> {
-        let var_version = self.latest_version_in_scope.get(&var)?;
+        let var_version = self.var_version_in_scope.get(&var)?;
         let mut scope = Some(scope);
         while let Some(s) = scope {
             if let Some(v) = var_version.get(&s) {
@@ -96,10 +115,49 @@ impl<'s> CFGBuild<'s> {
         self.add_bb_call_args(cfg);
     }
 
+    fn vars_in_bb(l: &ir::Label, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) -> HashSet<ir::VVar> {
+        let mut queue = VecDeque::from([l]);
+        let mut enqueued = HashSet::from([l]);
+
+        let mut res = HashSet::new();
+        while let Some(n) = queue.pop_front() {
+            for s in &cfg.get_node(&n).unwrap().borrow().statements {
+                res.extend(s.write_to_var().into_iter().map(|v| v.clone()));
+            }
+
+            for i in cfg.in_neighbors(&n) {
+                if !enqueued.contains(i) {
+                    queue.push_back(i);
+                    enqueued.insert(i);
+                }
+            }
+        }
+        res
+    }
+
+    /// HACK: Hack around basic block argument insertion for now.
+    fn vars_in_bb_predecessors(
+        l: &ir::Label,
+        cfg: &CFG<ir::Label, ir::BasicBlock, Edge>,
+    ) -> HashSet<ir::VVar> {
+        let preds = cfg.in_neighbors(l);
+        if preds.is_empty() {
+            return HashSet::new();
+        }
+        let mut res = Self::vars_in_bb(preds[0], cfg);
+        for o in &preds[1..] {
+            res = res
+                .intersection(&Self::vars_in_bb(o, cfg))
+                .map(|l| l.clone())
+                .collect();
+        }
+        res
+    }
+
     fn add_bb_args(&self, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) {
         let df = dominator::DominanceFrontier::new(&cfg.entry, cfg);
         for (label, bb) in cfg.nodes() {
-            let bb_writes = bb
+            let bb_writes: HashSet<_> = bb
                 .borrow()
                 .write_vars()
                 .into_iter()
@@ -110,13 +168,8 @@ impl<'s> CFGBuild<'s> {
                     continue;
                 }
                 let frontier_bb = cfg.get_node(f).unwrap();
-                let frontier_reads: HashSet<_> = frontier_bb
-                    .borrow()
-                    .read_vars()
-                    .into_iter()
-                    .map(|v| v.clone())
-                    .collect();
-                frontier_reads.intersection(&bb_writes).for_each(|v| {
+                let vars = Self::vars_in_bb_predecessors(f, cfg);
+                bb_writes.intersection(&vars).for_each(|v| {
                     if !frontier_bb.borrow().args.contains(v) {
                         frontier_bb.borrow_mut().args.push((*v).clone());
                     }
@@ -232,7 +285,7 @@ impl<'s> CFGBuild<'s> {
                     let version = self
                         .var_versions
                         .borrow()
-                        .latest_version_in_bb(&arg.var, *l)
+                        .latest_version_in_bb(&arg.var, *l, cfg)
                         .unwrap();
 
                     bb_call.args.push(ir::VVar::new(arg.var.clone(), version));

@@ -167,11 +167,11 @@ pub enum Type {
     Bool,
     Char,
     Ptr(Box<Type>),
-    Array(Box<Type>, i64),
+    Array(Box<Type>, u64),
 }
 
 impl Type {
-    pub fn size(&self) -> i64 {
+    pub fn size(&self) -> u64 {
         match self {
             Type::Void => 0,
             Type::Int => 8,
@@ -182,7 +182,7 @@ impl Type {
         }
     }
 
-    pub fn array_len(&self) -> i64 {
+    pub fn array_len(&self) -> u64 {
         match self {
             Type::Array(_, n) => *n,
             _ => panic!(),
@@ -195,10 +195,20 @@ impl Type {
             _ => None,
         }
     }
+
+    pub fn is_string(&self) -> bool {
+        match self {
+            Type::Array(e, _) => match e.as_ref() {
+                Type::Char => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
 }
 
 pub fn str_type(s: &String) -> Type {
-    Type::Array(Box::new(Type::Char), s.len() as i64)
+    Type::Array(Box::new(Type::Char), s.len() as u64)
 }
 
 #[derive(PartialEq, Eq, Debug)]

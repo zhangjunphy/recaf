@@ -173,11 +173,11 @@ pub Expr: Expr = {
 }
 
 pub AssignStmt: Statement = {
-    <start:@L> <loc: Location> "=" <e: Expr> ";" <end:@R> => Statement {
+    <start:@L> <loc: Location> "=" <e: Expr> <end:@R> => Statement {
         stmt: Stmt_::Assign(Assign{location: loc, expr: e}),
         span: Some(SrcSpan::new(start, end)),
     },
-    <start:@L> <loc: Location> <lend:@R> "+=" <e: Expr> ";" <end:@R> => Statement {
+    <start:@L> <loc: Location> <lend:@R> "+=" <e: Expr> <end:@R> => Statement {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
@@ -196,7 +196,7 @@ pub AssignStmt: Statement = {
         }),
         span: Some(SrcSpan::new(start, end)),
     },
-    <start:@L> <loc: Location> <lend:@R> "-=" <e: Expr> ";" <end:@R> => Statement {
+    <start:@L> <loc: Location> <lend:@R> "-=" <e: Expr> <end:@R> => Statement {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
@@ -215,7 +215,7 @@ pub AssignStmt: Statement = {
         }),
         span: Some(SrcSpan::new(start, end)),
     },
-    <start:@L> <loc: Location> <lend:@R> "++" ";" <end:@R> => Statement {
+    <start:@L> <loc: Location> <lend:@R> "++" <end:@R> => Statement {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
@@ -238,7 +238,7 @@ pub AssignStmt: Statement = {
         }),
         span: Some(SrcSpan::new(start, end)),
     },
-    <start:@L> <loc: Location> <lend:@R> "--" ";" <end:@R> => Statement {
+    <start:@L> <loc: Location> <lend:@R> "--" <end:@R> => Statement {
         stmt: Stmt_::Assign(Assign{
             location: loc.clone(),
             expr: Expr{
@@ -265,14 +265,14 @@ pub AssignStmt: Statement = {
 
 pub SingleLineStmt: Statement = {
     <AssignStmt> => <>,
-    <start:@L> <c: MethodCall> ";" <end:@R> => Statement {
+    <start:@L> <c: MethodCall> <end:@R> => Statement {
         stmt: Stmt_::MethodCall(c),
         span: Some(SrcSpan::new(start, end)),
     },
 }
 
 pub Statement: Statement = {
-    <SingleLineStmt> => <>,
+    <SingleLineStmt> ";" => <>,
     <start:@L> "if" "(" <e: Expr>  ")" <bi: Block> "else" <be: Block> ";"? <end:@R> => Statement {
         stmt: Stmt_::If(If{pred: e, if_block: bi, else_block: Some(be)}),
         span: Some(SrcSpan::new(start, end)),
@@ -317,10 +317,10 @@ pub Type: Type = {
     "void" => Type::Void,
 }
 
-pub Field: (ID, Option<i64>, SrcSpan) = {
+pub Field: (ID, Option<u64>, SrcSpan) = {
     <start:@L> <id: ID> <end:@R> => (id, None, SrcSpan::new(start, end)),
     <start:@L> <id: ID> "[" <size: Int> "]" <end:@R> =>
-        (id, Some(size), SrcSpan::new(start, end)),
+        (id, Some(size as u64), SrcSpan::new(start, end)),
 }
 
 pub ImportDecl: ImportDecl = {

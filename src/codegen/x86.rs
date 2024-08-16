@@ -64,21 +64,33 @@ pub enum AsmX86 {
     // Stack
     Enter(u64),
     Leave,
-    // Copying
-    MoveQ { src: Src, dest: Dest },
+    Push(Src),
+    Pop(Dest),
     // Control flow
     Ret,
     Call(Label),
     Jmp(Label),
     Je(Label),
     Jne(Label),
+    // Copying
+    MoveQ { src: Src, dest: Dest },
+    CMovE { src: Src, dest: Dest },
+    CMovNe { src: Src, dest: Dest },
+    CMovG { src: Src, dest: Dest },
+    CMovL { src: Src, dest: Dest },
+    CMovGe { src: Src, dest: Dest },
+    CMovLe { src: Src, dest: Dest },
     // Arith/Logic
     Add { src: Src, dest: Dest },
     Sub { src: Src, dest: Dest },
     IMul { src: Src, dest: Dest },
     IDiv { div: Src },
-    Shr {reg: Reg},
-    Shl {reg: Reg},
+    Shr { reg: Reg },
+    Shl { reg: Reg },
     Ror { src: Src, dest: Dest },
     Cmp { src: Src, dest: Dest },
+}
+
+pub struct Block {
+    pub asms: Vec<AsmX86>,
 }
