@@ -205,6 +205,7 @@ impl Type {
             _ => false,
         }
     }
+
 }
 
 pub fn str_type(s: &String) -> Type {

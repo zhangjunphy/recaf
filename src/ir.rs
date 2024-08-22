@@ -12,13 +12,81 @@ pub enum Locality {
     Local,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum VarDomain {
+    Normal,
+    StrLit,
+}
+
+impl fmt::Display for VarDomain {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VarDomain::Normal => write!(f, ""),
+            VarDomain::StrLit => write!(f, "str"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum VarID {
+    Name(String),
+    Num(u64),
+}
+
+impl fmt::Display for VarID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VarID::Name(n) => write!(f, "{}", n),
+            VarID::Num(i) => write!(f, "{}", i),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Var {
-    pub id: u64,
+    pub domain: VarDomain,
+    pub id: VarID,
     pub ty: ast::Type,
     pub decl: Option<ast::FieldDecl>,
     pub span: Option<SrcSpan>,
     pub locality: Locality,
+}
+
+impl Var {
+    pub fn from_decl(
+        domain: VarDomain,
+        id: String,
+        ty: ast::Type,
+        decl: ast::FieldDecl,
+        locality: Locality,
+    ) -> Self {
+        Var {
+            domain,
+            id: VarID::Name(id),
+            ty,
+            span: decl.span,
+            decl: Some(decl),
+            locality,
+        }
+    }
+
+    pub fn numbered(
+        domain: VarDomain,
+        id: u64,
+        ty: ast::Type,
+        decl: Option<ast::FieldDecl>,
+        span: Option<SrcSpan>,
+        locality: Locality,
+    ) -> Self {
+        Var {
+            domain,
+            id: VarID::Num(id),
+            ty,
+            decl,
+            span,
+            locality,
+        }
+    }
 }
 
 impl Hash for Var {
@@ -26,19 +94,20 @@ impl Hash for Var {
     where
         H: Hasher,
     {
+        self.domain.hash(state);
         self.id.hash(state);
     }
 }
 
 impl PartialEq for Var {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.domain == other.domain && self.id == other.id
     }
 }
 
 impl fmt::Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "v{}", self.id)
+        write!(f, "v@{}@{}", self.domain, self.id)
     }
 }
 
@@ -78,7 +147,7 @@ impl PartialEq for VVar {
 
 impl fmt::Display for VVar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "v{}.{}", self.var.id, self.version.get())
+        write!(f, "{}.{}", self.var, self.version.get())
     }
 }
 
@@ -101,6 +170,13 @@ impl Val {
     pub fn get_var(&self) -> Option<&VVar> {
         match self {
             Val::Var(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn get_string_literal(&self) -> Option<&str> {
+        match self {
+            Val::Imm(ast::Literal::String(s)) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -478,7 +554,7 @@ impl fmt::Display for Function {
 
 pub struct Module {
     pub imports: Vec<String>,
-    pub globals: Vec<VVar>,
+    pub globals: Vec<(VVar, Option<ast::Literal>)>,
     pub functions: Vec<Function>,
 }
 
@@ -489,8 +565,12 @@ impl fmt::Display for Module {
         }
         write!(f, "\n")?;
 
-        for g in &self.globals {
-            write!(f, "{} = global {}\n", g, g.var.ty)?;
+        for (g, val) in &self.globals {
+            if val.is_some() {
+                write!(f, "{} = global {} {}\n", g, g.var.ty, val.as_ref().unwrap())?;
+            } else {
+                write!(f, "{} = global {}\n", g, g.var.ty)?;
+            }
         }
         write!(f, "\n")?;
 
@@ -501,57 +581,33 @@ impl fmt::Display for Module {
     }
 }
 
-pub mod visit {
-    use super::*;
-
-    pub trait Visitor {
-        fn visit_module(&mut self, m: &mut Module) {}
-        fn visit_import(&mut self, i: &mut String) {}
-        fn visit_global(&mut self, g: &mut VVar) {}
-        fn visit_function(&mut self, f: &mut Function) {}
-        fn visit_basic_block(&mut self, bb: &mut BasicBlock) {}
-        fn visit_statement(&mut self, s: &mut Statement) {}
-    }
-
-    impl dyn Visitor {
-        pub fn run(&mut self, m: &mut Module) {
-            self.visit_module(m);
-            for i in &mut m.imports {
-                self.visit_import(i);
-            }
-            for g in &mut m.globals {
-                self.visit_global(g);
-            }
-            for f in &mut m.functions {
-                self.visit_function(f);
-            }
-
-            for f in &mut m.functions {
-                for b in &mut f.body {
-                    self.visit_basic_block(b);
-                }
-            }
-
-            for f in &mut m.functions {
-                for b in &mut f.body {
-                    for s in &mut b.statements {
-                        self.visit_statement(s);
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub trait IRTransform {
     fn run(&mut self, module: &mut Module);
 }
 
 struct StringLiteralVisitor {
     literals: Vec<(VVar, String)>,
+    count: u64,
 }
 
-impl<'a> visit::Visitor for StringLiteralVisitor {
+impl StringLiteralVisitor {
+    fn new() -> Self {
+        StringLiteralVisitor {
+            literals: Vec::new(),
+            count: 0,
+        }
+    }
+
+    fn run(&mut self, m: &mut Module) {
+        for f in &mut m.functions {
+            for b in &mut f.body {
+                for s in &mut b.statements {
+                    self.visit_statement(s);
+                }
+            }
+        }
+    }
+
     fn visit_statement(&mut self, s: &mut Statement) {
         match s {
             Statement::Call {
@@ -561,16 +617,47 @@ impl<'a> visit::Visitor for StringLiteralVisitor {
             } => {
                 for a in arguments {
                     if a.ty().is_string() {
+                        let s = a.get_string_literal().unwrap();
+                        let var = self.new_literal_var(s, None);
+                        self.literals.push((var.clone(), s.to_string()));
+                        *a = Val::Var(var);
                     }
                 }
-            },
+            }
             _ => (),
         }
+    }
+
+    fn new_literal_var(&mut self, s: &str, span: Option<SrcSpan>) -> VVar {
+        let str_ty = ast::Type::Array(Box::new(ast::Type::Char), s.len() as u64);
+        let count = self.count;
+        self.count += 1;
+        VVar::new(
+            Rc::new(Var::numbered(
+                VarDomain::StrLit,
+                count,
+                str_ty,
+                None,
+                span,
+                Locality::Global,
+            )),
+            0,
+        )
+    }
+
+    fn literals(self) -> Vec<(VVar, String)> {
+        self.literals
     }
 }
 
 pub struct HoistStringLiteral {}
 
 impl IRTransform for HoistStringLiteral {
-    fn run(&mut self, module: &mut Module) {}
+    fn run(&mut self, module: &mut Module) {
+        let mut sl_visitor = StringLiteralVisitor::new();
+        sl_visitor.run(module);
+        for (var, s) in sl_visitor.literals() {
+            module.globals.push((var, Some(ast::Literal::String(s))))
+        }
+    }
 }

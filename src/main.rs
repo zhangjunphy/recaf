@@ -2,6 +2,7 @@ use clap::Parser;
 use recaf::ast::ASTPrinter;
 use recaf::cfg::{build, draw, optimize, optimize::CFGOptimizer};
 use recaf::cli::{Args, Stage};
+use recaf::ir;
 use recaf::parser::lexer::Lexer;
 use recaf::semantic;
 use std::fs::File;
@@ -128,6 +129,10 @@ fn ir(file: &String) {
     let mut optimizer = optimize::RemoveEmptyNodes {};
     optimizer.run(p.cfgs.get_mut("main").unwrap());
 
-    let ir = p.linearize(&program);
+    let mut ir = p.linearize(&program);
+
+    use ir::IRTransform;
+    let mut hoister_str = ir::HoistStringLiteral{};
+    hoister_str.run(&mut ir);
     println!("{}", ir);
 }

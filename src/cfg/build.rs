@@ -179,7 +179,7 @@ impl<'s> CFGBuild<'s> {
     }
 
     fn init_global_version(&self, p: &def::Program) {
-        for g in &p.globals {
+        for (g, _) in &p.globals {
             let version = self.var_versions.borrow_mut().new_version(
                 &g.var,
                 ast::Scope::new(consts::ROOT_SCOPE_ID),

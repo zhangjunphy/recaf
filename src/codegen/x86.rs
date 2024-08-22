@@ -89,8 +89,11 @@ pub enum AsmX86 {
     Shl { reg: Reg },
     Ror { src: Src, dest: Dest },
     Cmp { src: Src, dest: Dest },
+    // String
+    String(String),
 }
 
 pub struct Block {
+    pub label: Label,
     pub asms: Vec<AsmX86>,
 }

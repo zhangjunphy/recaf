@@ -72,7 +72,32 @@ impl VarCache {
         id
     }
 
-    fn new_local(
+    fn new_named(
+        &mut self,
+        ast_scope: ast::Scope,
+        ty: ast::Type,
+        decl: ast::FieldDecl,
+    ) -> ir::VVar {
+        let id = decl.id.str.clone();
+        let var = ir::VVar::new(
+            Rc::new(ir::Var::from_decl(
+                ir::VarDomain::Normal,
+                id.clone(),
+                ty,
+                decl,
+                ir::Locality::Local,
+            )),
+            0,
+        );
+        self.var_to_symbol
+            .insert(var.clone(), (ast_scope, id.clone()));
+        self.symbol_to_var
+            .insert((ast_scope, id.clone()), var.clone());
+        self.vars.push(var.clone());
+        var
+    }
+
+    fn new_temp(
         &mut self,
         ast_scope: ast::Scope,
         ty: ast::Type,
@@ -81,13 +106,14 @@ impl VarCache {
     ) -> ir::VVar {
         let id = self.new_var_id();
         let var = ir::VVar::new(
-            Rc::new(ir::Var {
+            Rc::new(ir::Var::numbered(
+                ir::VarDomain::Normal,
                 id,
                 ty,
-                decl: decl.clone(),
+                decl.clone(),
                 span,
-                locality: ir::Locality::Local,
-            }),
+                ir::Locality::Local,
+            )),
             0,
         );
         if let Some(d) = &decl {
@@ -100,33 +126,26 @@ impl VarCache {
         var
     }
 
-    fn new_global(
-        &mut self,
-        ty: ast::Type,
-        decl: Option<ast::FieldDecl>,
-        span: Option<SrcSpan>,
-    ) -> ir::VVar {
-        let id = self.new_var_id();
+    fn new_global(&mut self, ty: ast::Type, decl: ast::FieldDecl) -> ir::VVar {
+        let id = decl.id.str.clone();
         let var = ir::VVar::new(
-            Rc::new(ir::Var {
-                id,
+            Rc::new(ir::Var::from_decl(
+                ir::VarDomain::Normal,
+                id.clone(),
                 ty,
-                decl: decl.clone(),
-                span,
-                locality: ir::Locality::Global,
-            }),
+                decl,
+                ir::Locality::Global,
+            )),
             0,
         );
-        if let Some(d) = &decl {
-            self.var_to_symbol.insert(
-                var.clone(),
-                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.str.clone()),
-            );
-            self.symbol_to_var.insert(
-                (ast::Scope::from(consts::ROOT_SCOPE_ID), d.id.str.clone()),
-                var.clone(),
-            );
-        }
+        self.var_to_symbol.insert(
+            var.clone(),
+            (ast::Scope::from(consts::ROOT_SCOPE_ID), id.clone()),
+        );
+        self.symbol_to_var.insert(
+            (ast::Scope::from(consts::ROOT_SCOPE_ID), id.clone()),
+            var.clone(),
+        );
         self.vars.push(var.clone());
         var
     }
@@ -217,7 +236,7 @@ impl<'s> CFGPartialBuild<'s> {
 
         let mut res = def::Program {
             imports: p.imports.iter().map(|d| d.id.str.clone()).collect(),
-            globals: self.globals.take(),
+            globals: self.globals.take().into_iter().map(|g| (g, None)).collect(),
             cfgs: HashMap::new(),
         };
 
@@ -375,18 +394,18 @@ impl<'s> CFGPartialBuild<'s> {
         });
     }
 
-    fn new_local(&self, fld: &ast::FieldDecl) -> ir::VVar {
+    fn new_named(&self, fld: &ast::FieldDecl) -> ir::VVar {
         let scope = self.state.borrow().current_ast_scope;
-        self.mut_cache(|cache| cache.new_local(scope, fld.ty.clone(), Some(fld.clone()), fld.span))
+        self.mut_cache(|cache| cache.new_named(scope, fld.ty.clone(), fld.clone()))
     }
 
     fn new_global(&self, fld: &ast::FieldDecl) -> ir::VVar {
-        self.mut_cache(|cache| cache.new_global(fld.ty.clone(), Some(fld.clone()), fld.span))
+        self.mut_cache(|cache| cache.new_global(fld.ty.clone(), fld.clone()))
     }
 
     fn new_temp(&self, ty: &ast::Type) -> ir::VVar {
         let scope = self.state.borrow().current_ast_scope;
-        self.mut_cache(|cache| cache.new_local(scope, ty.clone(), None, None))
+        self.mut_cache(|cache| cache.new_temp(scope, ty.clone(), None, None))
     }
 
     fn lookup_id(&self, id: &ast::ID) -> ir::VVar {
@@ -446,12 +465,12 @@ impl<'s> CFGPartialBuild<'s> {
         self.state.borrow_mut().current_ast_scope = b.scope;
 
         // First build an entry block with method arguments.
-        let args = method_args.into_iter().map(|a| self.new_local(a)).collect();
+        let args = method_args.into_iter().map(|a| self.new_named(a)).collect();
         let entry = self.start_block(args);
 
         // Handle variable declarations
         for fld in &b.fields {
-            self.new_local(fld);
+            self.new_named(fld);
         }
 
         // Handle statements
