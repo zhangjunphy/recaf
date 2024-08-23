@@ -76,10 +76,11 @@ where
                 if preds.is_empty() {
                     continue;
                 }
-                let nca = tree.nearest_common_ancestor(preds);
-                if nca != tree.get_parent(n).unwrap() {
-                    tree.replace_parent(n, &nca);
-                    changed = true;
+                if let Some(nca) = tree.nearest_common_ancestor(preds) {
+                    if nca != tree.get_parent(n).unwrap() {
+                        tree.replace_parent(n, &nca);
+                        changed = true;
+                    }
                 }
             }
 
@@ -132,7 +133,7 @@ where
         self.nodes.get_mut(l).unwrap().parent = Some(p);
     }
 
-    fn nearest_common_ancestor(&self, nodes: Vec<&Ti>) -> &'a Ti {
+    fn nearest_common_ancestor(&self, nodes: Vec<&Ti>) -> Option<&'a Ti> {
         assert!(nodes.len() > 0);
         let paths = nodes
             .into_iter()
@@ -148,10 +149,18 @@ where
             }
             i += 1;
         }
-        paths[0][i - 1]
+        if i >= 1 {
+            Some(paths[0][i - 1])
+        } else {
+            None
+        }
     }
 
     fn path_to_root(&self, n: &Ti) -> Vec<&'a Ti> {
+        // In some rare cases, there are unreachable nodes from the entry.
+        if !self.nodes.contains_key(n) {
+            return Vec::new();
+        }
         let mut res = Vec::new();
         let nn = self.nodes.get_key_value(n).unwrap().0;
         let mut node = Some(*nn);

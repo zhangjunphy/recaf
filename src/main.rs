@@ -2,12 +2,12 @@ use clap::Parser;
 use recaf::ast::ASTPrinter;
 use recaf::cfg::{build, draw, optimize, optimize::CFGOptimizer};
 use recaf::cli::{Args, Stage};
+use recaf::codegen::genx86;
 use recaf::ir;
 use recaf::parser::lexer::Lexer;
 use recaf::semantic;
 use std::fs::File;
 use std::io::prelude::*;
-use recaf::codegen::genx86;
 
 fn main() {
     let args = Args::parse();
@@ -95,12 +95,13 @@ fn cfg(file: &String) {
 
     let build = build::CFGBuild::new(&symbols);
     let mut p = build.build(&program);
+    for (_, cfg) in &mut p.cfgs {
+        let mut optimizer = optimize::RemoveEmptyNodes {};
+        optimizer.run(cfg);
+    }
 
-    let mut optimizer = optimize::RemoveEmptyNodes {};
-    optimizer.run(p.cfgs.get_mut("main").unwrap());
-
-    let d = draw::CFGDraw::new(p.cfgs.get("main").unwrap());
-    println!("{}", d.draw());
+    let dot_str = draw::draw_program(p);
+    println!("{}", dot_str);
 }
 
 fn ir(file: &String) {
@@ -127,14 +128,15 @@ fn ir(file: &String) {
 
     let build = build::CFGBuild::new(&symbols);
     let mut p = build.build(&program);
-
-    let mut optimizer = optimize::RemoveEmptyNodes {};
-    optimizer.run(p.cfgs.get_mut("main").unwrap());
+    for (_, cfg) in &mut p.cfgs {
+        let mut optimizer = optimize::RemoveEmptyNodes {};
+        optimizer.run(cfg);
+    }
 
     let mut ir = p.linearize(&program);
 
     use ir::IRTransform;
-    let mut hoister_str = ir::HoistStringLiteral{};
+    let mut hoister_str = ir::HoistStringLiteral {};
     hoister_str.run(&mut ir);
     println!("{}", ir);
 }
@@ -163,16 +165,16 @@ fn asm(file: &String) {
 
     let build = build::CFGBuild::new(&symbols);
     let mut p = build.build(&program);
-
-    let mut optimizer = optimize::RemoveEmptyNodes {};
-    optimizer.run(p.cfgs.get_mut("main").unwrap());
+    for (_, cfg) in &mut p.cfgs {
+        let mut optimizer = optimize::RemoveEmptyNodes {};
+        optimizer.run(cfg);
+    }
 
     let mut ir = p.linearize(&program);
 
     use ir::IRTransform;
-    let mut hoister_str = ir::HoistStringLiteral{};
+    let mut hoister_str = ir::HoistStringLiteral {};
     hoister_str.run(&mut ir);
-
 
     let mut gen = genx86::CodeGenX86::new();
     let asm = gen.run(ir);

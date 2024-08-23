@@ -35,11 +35,11 @@ where
                 NodeAttributes::shape(shape::box_)
             )
         );
-        g.add_stmt(Stmt::Subgraph(self.draw_cfg()));
+        g.add_stmt(Stmt::Subgraph(self.draw_subgraph()));
         g.print(&mut PrinterContext::default())
     }
 
-    fn draw_cfg(&self) -> Subgraph {
+    pub fn draw_subgraph(&self) -> Subgraph {
         let mut stmts = Vec::new();
         for (ti, node) in self.cfg.nodes() {
             stmts.push(self.draw_node(ti, node));
@@ -84,4 +84,19 @@ where
               SubgraphAttributes::rank(rank)
         ))
     }
+}
+
+pub fn draw_program(p: def::Program) -> String {
+    let mut g = graph!(
+        di id!("");
+        node!(
+            "node";
+            NodeAttributes::shape(shape::box_)
+        )
+    );
+    for (_, cfg) in &p.cfgs {
+        let draw = CFGDraw::new(cfg);
+        g.add_stmt(Stmt::Subgraph(draw.draw_subgraph()));
+    }
+    g.print(&mut PrinterContext::default())
 }

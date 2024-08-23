@@ -431,7 +431,7 @@ impl<'s> CFGPartialBuild<'s> {
             self.globals.borrow_mut().push(self.new_global(fld));
         }
 
-        // Build cfg for each mehtod
+        // Build cfg for each method 
         for m in &p.methods {
             let cfg = self.visit_method(m);
             self.cfgs.borrow_mut().insert(m.id.str.clone(), cfg);

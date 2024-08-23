@@ -1,3 +1,4 @@
+use super::mem;
 use super::x86;
 use crate::ast;
 use crate::ir;
@@ -34,8 +35,7 @@ impl CodeGenX86 {
         for (var, init) in globals {
             match &var.var.ty {
                 ast::Type::Int | ast::Type::Char | ast::Type::Bool => {
-                    let label =
-                        x86::Label::new(format!("intlit.{}", var.var.id).as_str());
+                    let label = x86::Label::new(format!("intlit.{}", var.var.id).as_str());
                     self.int_lit_blocks.insert(var.clone(), label.clone());
                     let mut block = x86::Block {
                         label: label.clone(),
@@ -72,5 +72,41 @@ impl CodeGenX86 {
             }
         }
         section
+    }
+
+    pub fn gen_function(&mut self, func: &ir::Function) -> x86::Section {
+        let mut section = x86::Section {
+            kind: x86::SectionKind::Text,
+            blocks: Vec::new(),
+        };
+
+        // Add an entry point into this function.
+        // Allocate stack frame for local variables.
+        let frame = mem::StackFrame::new(func);
+        let mut entry = x86::Block {
+            label: x86::Label::new(func.name.as_str()),
+            asms: Vec::new(),
+        };
+        entry.asms.push(x86::AsmX86::Enter(frame.size));
+        section.blocks.push(entry);
+
+        for bb in &func.body {
+            let label = x86::Label::new(format!("{}", bb.label).as_str());
+            let mut block = x86::Block {
+                label,
+                asms: Vec::new(),
+            };
+            for stmt in &bb.statements {
+            }
+        }
+
+        section
+    }
+
+    pub fn gen_statement(&self, stmt: &ir::Statement, frame: &mem::StackFrame) -> Vec<x86::AsmX86> {
+        let res = Vec::new();
+        match stmt {
+        }
+        res
     }
 }
