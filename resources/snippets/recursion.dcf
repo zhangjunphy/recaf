@@ -1,0 +1,15 @@
+import printf;
+
+int f(int a) {
+  printf("Function f: %d\n", a);
+  return g(a + 1);
+}
+
+int g(int a) {
+  printf("Function g: %d\n", a);
+  return f(a * 2);
+}
+
+void main() {
+  f(1);
+}

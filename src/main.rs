@@ -7,6 +7,7 @@ use recaf::parser::lexer::Lexer;
 use recaf::semantic;
 use std::fs::File;
 use std::io::prelude::*;
+use recaf::codegen::genx86;
 
 fn main() {
     let args = Args::parse();
@@ -20,6 +21,7 @@ fn main() {
         Stage::Parse => parse(&file),
         Stage::Cfg => cfg(&file),
         Stage::Ir => ir(&file),
+        Stage::Asm => asm(&file),
     }
 }
 
@@ -135,4 +137,44 @@ fn ir(file: &String) {
     let mut hoister_str = ir::HoistStringLiteral{};
     hoister_str.run(&mut ir);
     println!("{}", ir);
+}
+
+fn asm(file: &String) {
+    let mut content = String::new();
+    let mut f = match File::open(file) {
+        Err(msg) => panic!("Could not open {}: {}", file, msg),
+        Ok(file) => file,
+    };
+    if let Err(msg) = f.read_to_string(&mut content) {
+        panic!("Error reading {}: {}", file, msg);
+    }
+
+    let mut program = match recaf::parser::parse(&content) {
+        Ok(program) => program,
+        Err(err) => {
+            panic!("{}", err)
+        }
+    };
+
+    let symbols = match semantic::check(&mut program) {
+        Err(errors) => panic!("{:?}", errors),
+        Ok(s) => s,
+    };
+
+    let build = build::CFGBuild::new(&symbols);
+    let mut p = build.build(&program);
+
+    let mut optimizer = optimize::RemoveEmptyNodes {};
+    optimizer.run(p.cfgs.get_mut("main").unwrap());
+
+    let mut ir = p.linearize(&program);
+
+    use ir::IRTransform;
+    let mut hoister_str = ir::HoistStringLiteral{};
+    hoister_str.run(&mut ir);
+
+
+    let mut gen = genx86::CodeGenX86::new();
+    let asm = gen.run(ir);
+    println!("{}", asm);
 }

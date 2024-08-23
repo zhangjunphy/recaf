@@ -138,6 +138,13 @@ impl Literal {
             Literal::String(s) => str_type(s),
         }
     }
+
+    pub fn str_lit(&self) -> Option<String> {
+        match &self {
+            Literal::String(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -205,7 +212,6 @@ impl Type {
             _ => false,
         }
     }
-
 }
 
 pub fn str_type(s: &String) -> Type {

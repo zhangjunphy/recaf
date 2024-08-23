@@ -6,6 +6,7 @@ pub enum Stage {
     Parse,
     Cfg,
     Ir,
+    Asm,
 }
 
 #[derive(Parser)]
