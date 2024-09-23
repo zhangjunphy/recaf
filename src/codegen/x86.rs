@@ -3,6 +3,7 @@ use std::fmt;
 pub enum Mem {
     Imm(u64),
     RegOffset(Reg, i64),
+    Label(Label),
 }
 
 pub enum Reg {
@@ -53,7 +54,7 @@ impl Into<u64> for Reg {
 pub enum Src {
     Reg(Reg),
     Mem(Mem),
-    Imm(u64),
+    Imm(i64),
 }
 
 pub enum Dest {

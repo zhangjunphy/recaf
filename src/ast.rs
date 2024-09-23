@@ -145,6 +145,15 @@ impl Literal {
             _ => None,
         }
     }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match &self {
+            Literal::Int(i) => Some(*i),
+            Literal::Char(c) => Some(*c as i64),
+            Literal::Bool(b) => Some(if *b { 1 } else { 0 }),
+            Literal::String(_) => None,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]

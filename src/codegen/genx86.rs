@@ -21,6 +21,7 @@ impl CodeGenX86 {
             int_lit_blocks: HashMap::new(),
         }
     }
+
     pub fn run(&mut self, module: ir::Module) -> x86::Assembly {
         let mut res = Vec::new();
         res.push(self.gen_global(&module.globals));
@@ -96,17 +97,39 @@ impl CodeGenX86 {
                 label,
                 asms: Vec::new(),
             };
-            for stmt in &bb.statements {
-            }
+            for stmt in &bb.statements {}
         }
 
         section
     }
 
     pub fn gen_statement(&self, stmt: &ir::Statement, frame: &mem::StackFrame) -> Vec<x86::AsmX86> {
-        let res = Vec::new();
+        let mut res = Vec::new();
         match stmt {
+            ir::Statement::Assign {
+                dst,
+                src: ir::Val::Imm(lit),
+            } => {
+                let dst_mem = self.var_mem(dst, frame).unwrap();
+                let mov = x86::AsmX86::MovQ {
+                    src: x86::Src::Imm(lit.as_i64().unwrap()),
+                    dest: x86::Dest::Mem(dst_mem),
+                };
+                res.push(mov);
+            }
+            ir::Statement::Call { dst, method, arguments } => {
+            }
         }
         res
+    }
+
+    fn var_mem(&self, var: &ir::VVar, frame: &mem::StackFrame) -> Option<x86::Mem> {
+        if let Some(slot) = frame.get_var(var) {
+            return Some(x86::Mem::RegOffset(x86::Reg::RSP, slot.start as i64));
+        }
+        if let Some(label) = self.int_lit_blocks.get(var) {
+            return Some(x86::Mem::Label(label.clone()));
+        }
+        None
     }
 }
