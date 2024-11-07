@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[derive(Clone)]
 pub enum Mem {
     Imm(u64),
     RegOffset(Reg, i64),

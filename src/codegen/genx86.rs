@@ -7,6 +7,7 @@ use std::collections::HashMap;
 pub struct CodeGenX86 {
     str_lit_blocks: HashMap<ir::VVar, x86::Label>,
     int_lit_blocks: HashMap<ir::VVar, x86::Label>,
+    module: ir::Module,
 }
 
 pub enum LabelKind {
@@ -15,20 +16,22 @@ pub enum LabelKind {
 }
 
 impl CodeGenX86 {
-    pub fn new() -> Self {
+    pub fn new(module: ir::Module) -> Self {
         CodeGenX86 {
             str_lit_blocks: HashMap::new(),
             int_lit_blocks: HashMap::new(),
+            module,
         }
     }
 
-    pub fn run(&mut self, module: ir::Module) -> x86::Assembly {
+    pub fn run(&mut self) -> x86::Assembly {
         let mut res = Vec::new();
-        res.push(self.gen_global(&module.globals));
+        res.push(self.gen_global());
         x86::Assembly { sections: res }
     }
 
-    pub fn gen_global(&mut self, globals: &Vec<(ir::VVar, Option<ast::Literal>)>) -> x86::Section {
+    fn gen_global(&mut self) -> x86::Section {
+        let globals = &self.module.globals;
         let mut section = x86::Section {
             kind: x86::SectionKind::Data,
             blocks: Vec::new(),
@@ -83,7 +86,7 @@ impl CodeGenX86 {
 
         // Add an entry point into this function.
         // Allocate stack frame for local variables.
-        let frame = mem::StackFrame::new(func);
+        let mut frame = mem::StackFrame::new(func);
         let mut entry = x86::Block {
             label: x86::Label::new(func.name.as_str()),
             asms: Vec::new(),
@@ -103,24 +106,103 @@ impl CodeGenX86 {
         section
     }
 
-    pub fn gen_statement(&self, stmt: &ir::Statement, frame: &mem::StackFrame) -> Vec<x86::AsmX86> {
-        let mut res = Vec::new();
+    pub fn gen_statement(
+        &self,
+        stmt: &ir::Statement,
+        frame: &mut mem::StackFrame,
+    ) -> Vec<x86::AsmX86> {
+        let mut asms = Vec::new();
         match stmt {
-            ir::Statement::Assign {
-                dst,
-                src: ir::Val::Imm(lit),
-            } => {
+            ir::Statement::Assign { dst, src } => {
                 let dst_mem = self.var_mem(dst, frame).unwrap();
                 let mov = x86::AsmX86::MovQ {
-                    src: x86::Src::Imm(lit.as_i64().unwrap()),
+                    src: self.get_val_src(src, frame),
                     dest: x86::Dest::Mem(dst_mem),
                 };
-                res.push(mov);
+                asms.push(mov);
             }
-            ir::Statement::Call { dst, method, arguments } => {
+            ir::Statement::Call {
+                dst,
+                method,
+                arguments,
+            } => {
+                asms.append(&mut self.setup_call_site(arguments, frame));
+                asms.push(x86::AsmX86::Call(x86::Label {
+                    str: method.clone(),
+                }));
+                if let Some(dst) = dst {
+                    let slot = frame.push_var(dst);
+                    let mem = x86::Mem::RegOffset(x86::Reg::RSP, slot.start as i64);
+                    asms.push(x86::AsmX86::MovQ {
+                        src: x86::Src::Reg(x86::Reg::RAX),
+                        dest: x86::Dest::Mem(mem),
+                    });
+                }
             }
+            ir::Statement::Alloca { dst, ty, size } => frame.push_var(dst),
         }
-        res
+        asms
+    }
+
+    fn setup_call_site(
+        &self,
+        args: &Vec<ir::Val>,
+        frame: &mut mem::StackFrame,
+    ) -> Vec<x86::AsmX86> {
+        let mut asms = Vec::new();
+        let arg_regs = vec![
+            x86::Reg::RDI,
+            x86::Reg::RSI,
+            x86::Reg::RDX,
+            x86::Reg::RCX,
+            x86::Reg::R(8),
+            x86::Reg::R(9),
+        ];
+        // Setup first 6 args
+        for (reg, arg) in std::iter::zip(arg_regs, args) {
+            asms.push(x86::AsmX86::MovQ {
+                src: self.get_val_src(arg, frame),
+                dest: x86::Dest::Reg(reg),
+            })
+        }
+        // Push remaining args into stack
+        for arg in args[6..].iter().rev() {
+            let (_, mut stack_asms) = self.push_stack(arg, frame);
+            asms.append(&mut stack_asms);
+        }
+
+        asms
+    }
+
+    fn push_stack(
+        &self,
+        val: &ir::Val,
+        frame: &mut mem::StackFrame,
+    ) -> (x86::Mem, Vec<x86::AsmX86>) {
+        let mut asms = Vec::new();
+        let mem = match val {
+            ir::Val::Var(var) => {
+                let slot = frame.push_var(var);
+                let mem = x86::Mem::RegOffset(x86::Reg::RSP, slot.start as i64);
+                asms.push(x86::AsmX86::MovQ {
+                    src: x86::Src::Mem(self.var_mem(var, frame).unwrap()),
+                    dest: x86::Dest::Mem(mem.clone()),
+                });
+                mem
+            }
+            ir::Val::Imm(lit) => {
+                let slot = frame.push_lit(lit);
+                x86::Mem::RegOffset(x86::Reg::RSP, slot.start as i64)
+            }
+        };
+        (mem, asms)
+    }
+
+    fn get_val_src(&self, val: &ir::Val, frame: &mem::StackFrame) -> x86::Src {
+        match val {
+            ir::Val::Var(var) => x86::Src::Mem(self.var_mem(var, frame).unwrap()),
+            ir::Val::Imm(lit) => x86::Src::Imm(lit.as_i64().unwrap()),
+        }
     }
 
     fn var_mem(&self, var: &ir::VVar, frame: &mem::StackFrame) -> Option<x86::Mem> {

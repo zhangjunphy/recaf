@@ -1,3 +1,4 @@
+use crate::ast;
 use crate::ir;
 use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
@@ -60,6 +61,17 @@ impl StackFrame {
         self.size += var_size;
         let slot = self.slots.last().unwrap();
         self.vars.insert(var.clone(), slot.clone());
+        slot
+    }
+
+    pub fn push_lit(&mut self, lit: &ast::Literal) -> &Rc<StackSlot> {
+        let var_size = lit.ty().size();
+        self.slots.insert(Rc::new(StackSlot {
+            start: self.size,
+            size: var_size,
+        }));
+        self.size += var_size;
+        let slot = self.slots.last().unwrap();
         slot
     }
 
