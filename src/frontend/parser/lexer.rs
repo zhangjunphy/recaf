@@ -1,7 +1,7 @@
 use crate::err_pos;
-use crate::error::Error;
-use crate::parser::util;
-use crate::source_pos::{Pos, SrcSpan};
+use crate::utils::error::Error;
+use crate::frontend::parser::util;
+use crate::utils::source_pos::{Pos, SrcSpan};
 use core::fmt;
 use regex::Regex;
 use std::collections::BTreeSet;
@@ -159,23 +159,23 @@ impl<'input> Lexer<'input> {
         let next_char = to_scan.chars().next().unwrap();
 
         if to_scan.starts_with('"') {
-            return self.match_string();
+            self.match_string()
         } else if to_scan.starts_with('\'') {
-            return self.match_char();
+            self.match_char()
         } else if let token @ Some(_) = self.match_token() {
-            return token;
+            token
         } else if let id @ Some(_) = self.match_id() {
-            return id;
+            id
         } else if let num @ Some(_) = self.match_num() {
-            return num;
+            num
         } else {
             let start = self.pos;
             self.advance(1);
-            return Some(Err(err_pos!(
+            Some(Err(err_pos!(
                 start,
                 self.pos,
                 "Unable to handle character: '{next_char}'",
-            )));
+            )))
         }
     }
 
@@ -190,12 +190,12 @@ impl<'input> Lexer<'input> {
         let start = self.pos;
         let c = self.to_scan().chars().next().unwrap();
         let end = self.forward_pos(1).unwrap();
-        return Some((c, SrcSpan::new(start, end)));
+        Some((c, SrcSpan::new(start, end)))
     }
 
     fn forward_pos(&self, nchars: usize) -> Result<Pos, usize> {
         let mut ci = self.to_scan().char_indices().peekable();
-        let mut res = self.pos.clone();
+        let mut res = self.pos;
         for i in 0..nchars {
             match ci.next() {
                 None => return Err(i),
@@ -219,10 +219,7 @@ impl<'input> Lexer<'input> {
     }
 
     fn advance(&mut self, nchars: usize) -> Pos {
-        let pos = self.forward_pos(nchars).and_then(|p| {
-            self.pos = p;
-            Ok(p)
-        });
+        let pos = self.forward_pos(nchars).inspect(|p| self.pos = *p);
         assert!(pos.is_ok());
         pos.unwrap()
     }
@@ -271,7 +268,7 @@ impl<'input> Lexer<'input> {
         } else {
             assert!(self.to_scan().is_empty());
         }
-        return self.pos.offset - start.offset;
+        self.pos.offset - start.offset
     }
     fn consume_block_comment(&mut self) -> usize {
         if !self.to_scan().starts_with("/*") {
@@ -297,7 +294,7 @@ impl<'input> Lexer<'input> {
             }
         }
         assert!(depth == 0);
-        return self.pos.offset - start.offset;
+        self.pos.offset - start.offset
     }
 
     fn match_token(&mut self) -> Option<TokenItem> {
@@ -434,6 +431,6 @@ impl<'input> Iterator for Lexer<'input> {
 
 impl fmt::Display for Tok {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{:?}", self)
     }
 }

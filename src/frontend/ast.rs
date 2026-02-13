@@ -1,4 +1,6 @@
-use crate::source_pos::SrcSpan;
+//! AST structures
+
+use crate::utils::source_pos::SrcSpan;
 use std::fmt;
 use std::io;
 
@@ -205,16 +207,13 @@ impl Type {
 
     pub fn is_string(&self) -> bool {
         match self {
-            Type::Array(e, _) => match e.as_ref() {
-                Type::Char => true,
-                _ => false,
-            },
+            Type::Array(e, _) => matches!(e.as_ref(), Type::Char),
             _ => false,
         }
     }
 }
 
-pub fn str_type(s: &String) -> Type {
+pub fn str_type(s: &str) -> Type {
     Type::Array(Box::new(Type::Char), s.len() as u64)
 }
 
@@ -252,7 +251,7 @@ pub enum CondOp {
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use crate::parser::util::escape_string_literal;
+        use crate::frontend::parser::util::escape_string_literal;
         match self {
             Literal::Int(v) => write!(f, "{}", v),
             Literal::Char(v) => write!(f, "\'{}\'", v),
@@ -458,7 +457,7 @@ where
                     None => size += self.indented_write("}")?,
                     Some(b) => {
                         size += self.indented_write("} else {")?;
-                        size += self.visit_block(&b)?;
+                        size += self.visit_block(b)?;
                     }
                 };
                 size += self.indented_write("}")?;

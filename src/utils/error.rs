@@ -1,4 +1,4 @@
-use crate::source_pos::SrcSpan;
+use crate::utils::source_pos::SrcSpan;
 use std::fmt;
 
 #[macro_export]

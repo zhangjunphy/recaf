@@ -1,9 +1,9 @@
 //! Type inference for expressions and semantic checks.
 
-use crate::ast::*;
+use crate::frontend::ast::*;
 use crate::consts;
-use crate::error::Error;
-use crate::source_pos::SrcSpan;
+use crate::utils::error::Error;
+use crate::utils::source_pos::SrcSpan;
 use crate::{err, err_span};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -69,13 +69,13 @@ impl ProgramSymbols {
             } else {
                 cur_block = self
                     .find_parent(cur_block.unwrap())
-                    .and_then(|t| Some(&t.scope));
+                    .map(|t| &t.scope);
             }
         }
         None
     }
 
-    pub fn find_method_decl<'p>(&'p self, name: &str) -> Option<MethodOrImport> {
+    pub fn find_method_decl<'p>(&'p self, name: &str) -> Option<MethodOrImport<'p>> {
         if let Some(method) = &self.methods.get(name) {
             Some(MethodOrImport::Method(method))
         } else if self.imports.contains(name) {
@@ -96,10 +96,7 @@ impl ProgramSymbols {
     }
 
     fn add_table_if_nonexist(&mut self, scope: Scope, parent_scope: Option<Scope>) {
-        if !self.variables.contains_key(&scope) {
-            self.variables
-                .insert(scope, VariableTable::new(scope, parent_scope));
-        }
+        self.variables.entry(scope).or_insert(VariableTable::new(scope, parent_scope));
     }
 
     fn add_import(&mut self, imp: &ImportDecl) -> Result<(), Error> {
@@ -163,12 +160,6 @@ pub struct SymbolTableBuilder {
 }
 
 impl SymbolTableBuilder {
-    pub fn new() -> SymbolTableBuilder {
-        SymbolTableBuilder {
-            symbols: ProgramSymbols::new(),
-        }
-    }
-
     pub fn process(&mut self, program: &Program) -> Result<ProgramSymbols, Error> {
         self.process_program(program)?;
         Ok(std::mem::replace(&mut self.symbols, ProgramSymbols::new()))
@@ -243,6 +234,14 @@ impl SymbolTableBuilder {
     }
 }
 
+impl Default for SymbolTableBuilder {
+    fn default() -> Self {
+        SymbolTableBuilder {
+            symbols: ProgramSymbols::new(),
+        }
+    }
+}
+
 // Check semantics. Annotate expression types.
 pub struct SemanticChecker<'p> {
     symbols: &'p ProgramSymbols,
@@ -268,7 +267,7 @@ impl<'p> SemanticChecker<'p> {
         for m in &mut program.methods {
             self.check_method_decl(m);
         }
-        std::mem::replace(&mut self.errors.borrow_mut(), Vec::new())
+        std::mem::take(&mut self.errors.borrow_mut())
     }
 
     fn check_main(&self) {
@@ -562,8 +561,8 @@ impl<'p> SemanticChecker<'p> {
     }
 }
 
-pub fn check<'p>(p: &'p mut Program) -> Result<ProgramSymbols, Vec<Error>> {
-    let mut se = SymbolTableBuilder::new();
+pub fn check(p: &mut Program) -> Result<ProgramSymbols, Vec<Error>> {
+    let mut se = SymbolTableBuilder::default();
     let table = se.process(p).unwrap();
     let errors = {
         let checker = SemanticChecker::new(&table);

@@ -1,9 +1,9 @@
 use std::str::FromStr;
-use crate::ast::*;
-use crate::source_pos::{Pos, SrcSpan};
-use crate::parser::lexer;
-use crate::error;
-use crate::parser::ParserState;
+use crate::frontend::ast::*;
+use crate::frontend::parser::lexer;
+use crate::utils::source_pos::{Pos, SrcSpan};
+use crate::utils::error;
+use crate::frontend::parser::ParserState;
 
 grammar(state: &ParserState);
 

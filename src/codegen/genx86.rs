@@ -4,8 +4,8 @@ use crate::ir;
 use std::collections::HashMap;
 
 pub struct CodeGenX86 {
-    str_lit_blocks: HashMap<ir::VVar, x86::Label>,
-    int_lit_blocks: HashMap<ir::VVar, x86::Label>,
+    str_lit_blocks: HashMap<ir::Var, x86::Label>,
+    int_lit_blocks: HashMap<ir::Var, x86::Label>,
 }
 
 pub enum LabelKind {
@@ -26,22 +26,22 @@ impl CodeGenX86 {
         x86::Assembly { sections: res }
     }
 
-    pub fn gen_global(&mut self, globals: &Vec<(ir::VVar, Option<ast::Literal>)>) -> x86::Section {
+    pub fn gen_global(&mut self, globals: &Vec<(ir::Var, Option<ast::Literal>)>) -> x86::Section {
         let mut section = x86::Section {
             kind: x86::SectionKind::Data,
             blocks: Vec::new(),
         };
         for (var, init) in globals {
-            match &var.var.ty {
+            match &var.ty {
                 ast::Type::Int | ast::Type::Char | ast::Type::Bool => {
                     let label =
-                        x86::Label::new(format!("intlit.{}", var.var.id).as_str());
+                        x86::Label::new(format!("intlit.{}", var.id).as_str());
                     self.int_lit_blocks.insert(var.clone(), label.clone());
                     let mut block = x86::Block {
                         label: label.clone(),
                         asms: Vec::new(),
                     };
-                    block.asms.push(x86::AsmX86::Zero(var.var.ty.size()));
+                    block.asms.push(x86::AsmX86::Zero(var.ty.size()));
                     section.blocks.push(block);
                 }
                 ast::Type::Ptr(_) => {

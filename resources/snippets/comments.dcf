@@ -1,0 +1,8 @@
+int main(
+/*
+ level 1 comment
+ /* level 2 comment*/
+*/
+) {
+
+}

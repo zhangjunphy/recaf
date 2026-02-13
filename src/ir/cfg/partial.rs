@@ -45,9 +45,9 @@ impl fmt::Display for Label {
 }
 
 pub struct VarCache {
-    pub var_to_symbol: HashMap<ir::VVar, (ast::Scope, String)>,
-    pub symbol_to_var: HashMap<(ast::Scope, String), ir::VVar>,
-    pub vars: Vec<ir::VVar>,
+    pub var_to_symbol: HashMap<ir::Var, (ast::Scope, String)>,
+    pub symbol_to_var: HashMap<(ast::Scope, String), ir::Var>,
+    pub vars: Vec<ir::Var>,
 
     pub next_var_id: u64,
 }
@@ -77,9 +77,9 @@ impl VarCache {
         ast_scope: ast::Scope,
         ty: ast::Type,
         decl: ast::FieldDecl,
-    ) -> ir::VVar {
+    ) -> ir::Var {
         let id = decl.id.str.clone();
-        let var = ir::VVar::new(
+        let var = ir::Var::new(
             Rc::new(ir::Var::from_decl(
                 ir::VarDomain::Normal,
                 id.clone(),

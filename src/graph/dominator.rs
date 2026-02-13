@@ -78,7 +78,7 @@ where
                 }
                 let nca = tree.nearest_common_ancestor(preds);
                 if nca != tree.get_parent(n).unwrap() {
-                    tree.replace_parent(n, &nca);
+                    tree.replace_parent(n, nca);
                     changed = true;
                 }
             }
@@ -92,7 +92,7 @@ where
     }
 
     pub fn root(&self) -> &'a Ti {
-        &self.root
+        self.root
     }
 
     pub fn strictly_dominates(&self, n: &Ti) -> Vec<&'a Ti> {

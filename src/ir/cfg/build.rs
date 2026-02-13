@@ -115,7 +115,7 @@ impl<'s> CFGBuild<'s> {
         self.add_bb_call_args(cfg);
     }
 
-    fn vars_in_bb(l: &ir::Label, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) -> HashSet<ir::Var> {
+    fn vars_in_bb(l: &ir::Label, cfg: &CFG<ir::Label, ir::BasicBlock, Edge>) -> HashSet<ir::VVar> {
         let mut queue = VecDeque::from([l]);
         let mut enqueued = HashSet::from([l]);
 
@@ -139,7 +139,7 @@ impl<'s> CFGBuild<'s> {
     fn vars_in_bb_predecessors(
         l: &ir::Label,
         cfg: &CFG<ir::Label, ir::BasicBlock, Edge>,
-    ) -> HashSet<ir::Var> {
+    ) -> HashSet<ir::VVar> {
         let preds = cfg.in_neighbors(l);
         if preds.is_empty() {
             return HashSet::new();

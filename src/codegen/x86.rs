@@ -209,9 +209,9 @@ impl fmt::Display for AsmX86 {
 
 impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:\n", self.label)?;
+        writeln!(f, "{}:", self.label)?;
         for asm in &self.asms {
-            write!(f, "{}\n", asm)?;
+            writeln!(f, "{}", asm)?;
         }
         Ok(())
     }
@@ -228,7 +228,7 @@ impl fmt::Display for SectionKind {
 
 impl fmt::Display for Section {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}\n", self.kind)?;
+        writeln!(f, "{}", self.kind)?;
         for block in &self.blocks {
             write!(f, "{}", block)?;
         }
@@ -239,7 +239,7 @@ impl fmt::Display for Section {
 impl fmt::Display for Assembly {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for sec in &self.sections {
-            write!(f, "{}\n", sec)?;
+            writeln!(f, "{}", sec)?;
         }
         Ok(())
     }

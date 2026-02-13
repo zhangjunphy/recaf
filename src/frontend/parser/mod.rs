@@ -2,18 +2,18 @@ pub mod lexer;
 pub mod state;
 pub mod util;
 
-use crate::ast::*;
+use crate::frontend::ast::*;
 use crate::err_span;
-use crate::error::Error;
-use crate::parser::grammar::ProgramParser;
-use crate::parser::lexer::Lexer;
-use crate::parser::state::ParserState;
-use crate::source_pos::SrcSpan;
+use crate::utils::error::Error;
+use crate::frontend::parser::grammar::ProgramParser;
+use crate::frontend::parser::lexer::Lexer;
+use crate::frontend::parser::state::ParserState;
+use crate::utils::source_pos::SrcSpan;
 
 use lalrpop_util::lalrpop_mod;
-lalrpop_mod!(pub grammar, "/parser/grammar.rs");
+lalrpop_mod!(pub grammar, "/frontend/parser/grammar.rs");
 
-pub fn parse(content: &String) -> Result<Program, Error> {
+pub fn parse(content: &str) -> Result<Program, Error> {
     use lalrpop_util::ParseError;
     let state = ParserState::new();
     let ast = ProgramParser::new().parse(&state, Lexer::new(content));

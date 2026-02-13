@@ -1,15 +1,53 @@
-use crate::ast;
-use crate::source_pos::SrcSpan;
-use std::cell::Cell;
+use crate::utils::source_pos::SrcSpan;
 use std::collections::HashSet;
-use std::fmt;
+use std::fmt::{self, Write};
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Locality {
     Global,
     Local,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type {
+    Void,
+    I(u64),
+    Ptr,
+    Array(Box<Type>, u64),
+}
+
+impl Type {
+    pub fn is_string(&self) -> bool {
+        match self {
+            Type::Array(t, _) => matches!(t.as_ref(), Type::I(8)),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Constant {
+    I(u64, u64),
+    String(String),
+}
+
+impl fmt::Display for Constant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Constant::I(w, l) => write!(f, "i{} {}", w, l),
+            Constant::String(s) => write!(f, "\"{}\"", s),
+        }
+    }
+}
+
+impl Constant {
+    pub fn ty(&self) -> Type {
+        match self {
+            Constant::I(w, _) => Type::I(*w),
+            Constant::String(s) => Type::Array(Box::new(Type::I(8)), s.len() as u64)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -43,48 +81,29 @@ impl fmt::Display for VarID {
 }
 
 #[derive(Debug, Clone)]
+pub struct GlobalVar {
+    pub id : VarID,
+    pub ty : Type,
+}
+
+#[derive(Debug, Clone)]
 pub struct Var {
-    pub domain: VarDomain,
     pub id: VarID,
-    pub ty: ast::Type,
-    pub decl: Option<ast::FieldDecl>,
-    pub span: Option<SrcSpan>,
-    pub locality: Locality,
+    pub ty: Type,
 }
 
 impl Var {
-    pub fn from_decl(
-        domain: VarDomain,
-        id: String,
-        ty: ast::Type,
-        decl: ast::FieldDecl,
-        locality: Locality,
-    ) -> Self {
-        Var {
-            domain,
-            id: VarID::Name(id),
-            ty,
-            span: decl.span,
-            decl: Some(decl),
-            locality,
-        }
+    pub fn named(id: String, ty: Type) -> Self {
+        Var {id: VarID::Name(id), ty}
     }
 
-    pub fn numbered(
-        domain: VarDomain,
+    pub fn unnamed(
         id: u64,
-        ty: ast::Type,
-        decl: Option<ast::FieldDecl>,
-        span: Option<SrcSpan>,
-        locality: Locality,
+        ty: Type,
     ) -> Self {
         Var {
-            domain,
             id: VarID::Num(id),
             ty,
-            decl,
-            span,
-            locality,
         }
     }
 }
@@ -94,80 +113,39 @@ impl Hash for Var {
     where
         H: Hasher,
     {
-        self.domain.hash(state);
         self.id.hash(state);
     }
 }
 
 impl PartialEq for Var {
     fn eq(&self, other: &Self) -> bool {
-        self.domain == other.domain && self.id == other.id
+        self.id == other.id
     }
 }
 
 impl fmt::Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "v@{}@{}", self.domain, self.id)
+        write!(f, "%{}", self.id)
     }
 }
 
 impl Eq for Var {}
 
-/// Versioned Var.
-#[derive(Debug, Clone)]
-pub struct VVar {
-    pub var: Rc<Var>,
-    pub version: Cell<u64>,
-}
-
-impl VVar {
-    pub fn new(var: Rc<Var>, version: u64) -> Self {
-        VVar {
-            var,
-            version: Cell::new(version),
-        }
-    }
-}
-
-impl Hash for VVar {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.var.id.hash(state);
-        self.version.get().hash(state);
-    }
-}
-
-impl PartialEq for VVar {
-    fn eq(&self, other: &Self) -> bool {
-        self.var.id == other.var.id && self.version == other.version
-    }
-}
-
-impl fmt::Display for VVar {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}", self.var, self.version.get())
-    }
-}
-
-impl Eq for VVar {}
-
 #[derive(Clone, PartialEq, Eq)]
 pub enum Val {
-    Var(VVar),
-    Imm(ast::Literal),
+    Var(Var),
+    Imm(Constant),
 }
 
 impl Val {
-    pub fn ty(&self) -> ast::Type {
+    pub fn ty(&self) -> Type {
         match self {
-            Val::Var(v) => v.var.ty.clone(),
+            Val::Var(v) => v.ty.clone(),
             Val::Imm(l) => l.ty(),
         }
     }
 
-    pub fn get_var(&self) -> Option<&VVar> {
+    pub fn get_var(&self) -> Option<&Var> {
         match self {
             Val::Var(v) => Some(v),
             _ => None,
@@ -176,7 +154,7 @@ impl Val {
 
     pub fn get_string_literal(&self) -> Option<&str> {
         match self {
-            Val::Imm(ast::Literal::String(s)) => Some(s.as_str()),
+            Val::Imm(Constant::String(s)) => Some(s.as_str()),
             _ => None,
         }
     }
@@ -217,11 +195,11 @@ impl From<u64> for Label {
 #[derive(Clone)]
 pub struct CallBB {
     pub label: Label,
-    pub args: Vec<VVar>,
+    pub args: Vec<Var>,
 }
 
 impl CallBB {
-    pub fn new(label: Label, args: Vec<VVar>) -> Self {
+    pub fn new(label: Label, args: Vec<Var>) -> Self {
         CallBB { label, args }
     }
 }
@@ -266,24 +244,50 @@ impl fmt::Display for Branch {
     }
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum ArithOp {
+    Mul,
+    Div,
+    Add,
+    Sub,
+    Mod,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum CmpOp {
+    LT,
+    GT,
+    LE,
+    GE,
+
+    EQ,
+    NE,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum CondOp {
+    And,
+    Or,
+}
+
 #[derive(Clone)]
 pub enum Statement {
     Assign {
-        dst: VVar,
+        dst: Var,
         src: Val,
     },
     Call {
-        dst: Option<VVar>,
+        dst: Option<Var>,
         method: String,
         arguments: Vec<Val>,
     },
     Alloca {
-        dst: VVar,
-        ty: ast::Type,
+        dst: Var,
+        ty: Type,
         size: Option<u64>,
     },
     Load {
-        dst: VVar,
+        dst: Var,
         ptr: Val,
     },
     Store {
@@ -291,29 +295,29 @@ pub enum Statement {
         src: Val,
     },
     Arith {
-        dst: VVar,
-        op: ast::ArithOp,
+        dst: Var,
+        op: ArithOp,
         l: Val,
         r: Val,
     },
     Cmp {
-        dst: VVar,
-        op: ast::CmpOp,
+        dst: Var,
+        op: CmpOp,
         l: Val,
         r: Val,
     },
     Cond {
-        dst: VVar,
-        op: ast::CondOp,
+        dst: Var,
+        op: CondOp,
         l: Val,
         r: Val,
     },
     NNeg {
-        dst: VVar,
+        dst: Var,
         val: Val,
     },
     LNeg {
-        dst: VVar,
+        dst: Var,
         val: Val,
     },
     Br(Branch),
@@ -321,7 +325,7 @@ pub enum Statement {
 }
 
 impl Statement {
-    pub fn read_vars<'s>(&'s self) -> Vec<&VVar> {
+    pub fn operands<'s>(&'s self) -> Vec<&'s Var> {
         let reads = |val: &'s Val| val.get_var().into_iter().collect();
         match &self {
             Statement::Assign { dst: _, src } => reads(src),
@@ -329,8 +333,8 @@ impl Statement {
                 dst: _,
                 method: _,
                 arguments,
-            } => arguments.into_iter().flat_map(|a| a.get_var()).collect(),
-            Statement::Return(r) => r.into_iter().flat_map(|v| v.get_var()).collect(),
+            } => arguments.iter().flat_map(|a| a.get_var()).collect(),
+            Statement::Return(r) => r.iter().flat_map(|v| v.get_var()).collect(),
             Statement::Alloca {
                 dst: _,
                 ty: _,
@@ -381,7 +385,7 @@ impl Statement {
             }) => reads(pred),
         }
     }
-    pub fn write_to_var(&self) -> Option<&VVar> {
+    pub fn write_to_var(&self) -> Option<&Var> {
         match &self {
             Statement::Assign { dst, src: _ } => Some(dst),
             Statement::Call {
@@ -431,9 +435,8 @@ impl fmt::Display for Statement {
                 method,
                 arguments,
             } => {
-                match &dst {
-                    Some(d) => write!(f, "{} = ", d)?,
-                    _ => (),
+                if let Some(d) = &dst {
+                    write!(f, "{} = ", d)?;
                 }
                 let args = arguments
                     .iter()
@@ -471,12 +474,12 @@ impl fmt::Display for Statement {
 pub struct BasicBlock {
     pub label: Label,
     pub ast_scope: ast::Scope,
-    pub args: Vec<VVar>,
+    pub args: Vec<Var>,
     pub statements: Vec<Statement>,
 }
 
 impl BasicBlock {
-    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<VVar>) -> Self {
+    pub fn new(label: Label, ast_scope: ast::Scope, args: Vec<Var>) -> Self {
         BasicBlock {
             label,
             ast_scope,
@@ -489,10 +492,10 @@ impl BasicBlock {
         self.statements.push(stmt)
     }
 
-    pub fn read_vars(&self) -> HashSet<&VVar> {
-        self.statements.iter().flat_map(|s| s.read_vars()).collect()
+    pub fn read_vars(&self) -> HashSet<&Var> {
+        self.statements.iter().flat_map(|s| s.operands()).collect()
     }
-    pub fn write_vars(&self) -> HashSet<&VVar> {
+    pub fn write_vars(&self) -> HashSet<&Var> {
         self.statements
             .iter()
             .flat_map(|s| s.write_to_var())
@@ -527,7 +530,7 @@ impl fmt::Display for BasicBlock {
 
 pub struct Function {
     pub name: String,
-    pub args: Vec<VVar>,
+    pub args: Vec<Var>,
     pub ty: ast::Type,
     pub body: Vec<BasicBlock>,
 }
@@ -554,7 +557,7 @@ impl fmt::Display for Function {
 
 pub struct Module {
     pub imports: Vec<String>,
-    pub globals: Vec<(VVar, Option<ast::Literal>)>,
+    pub globals: Vec<(Var, Option<Constant>)>,
     pub functions: Vec<Function>,
 }
 
@@ -567,9 +570,9 @@ impl fmt::Display for Module {
 
         for (g, val) in &self.globals {
             if val.is_some() {
-                write!(f, "{} = global {} {}\n", g, g.var.ty, val.as_ref().unwrap())?;
+                write!(f, "{} = global {} {}\n", g, g.ty, val.as_ref().unwrap())?;
             } else {
-                write!(f, "{} = global {}\n", g, g.var.ty)?;
+                write!(f, "{} = global {}\n", g, g.ty)?;
             }
         }
         write!(f, "\n")?;
@@ -586,7 +589,7 @@ pub trait IRTransform {
 }
 
 struct StringLiteralVisitor {
-    literals: Vec<(VVar, String)>,
+    literals: Vec<(Var, String)>,
     count: u64,
 }
 
@@ -628,24 +631,21 @@ impl StringLiteralVisitor {
         }
     }
 
-    fn new_literal_var(&mut self, s: &str, span: Option<SrcSpan>) -> VVar {
-        let str_ty = ast::Type::Array(Box::new(ast::Type::Char), s.len() as u64);
+    fn new_literal_var(&mut self, s: &str, span: Option<SrcSpan>) -> Var {
+        let str_ty = Type::Array(Box::new(Type::Char), s.len() as u64);
         let count = self.count;
         self.count += 1;
-        VVar::new(
-            Rc::new(Var::numbered(
-                VarDomain::StrLit,
-                count,
-                str_ty,
-                None,
-                span,
-                Locality::Global,
-            )),
-            0,
+        Var::numbered(
+            VarDomain::StrLit,
+            count,
+            str_ty,
+            None,
+            span,
+            Locality::Global,
         )
     }
 
-    fn literals(self) -> Vec<(VVar, String)> {
+    fn literals(self) -> Vec<(Var, String)> {
         self.literals
     }
 }

@@ -20,7 +20,7 @@ impl Ord for StackSlot {
 }
 
 pub struct StackFrame<'a> {
-    vars: HashMap<ir::VVar, &'a StackSlot>,
+    vars: HashMap<ir::Var, &'a StackSlot>,
     slots: BTreeSet<StackSlot>,
     size: u64,
 }
@@ -34,8 +34,8 @@ impl<'a> StackFrame<'a> {
         }
     }
 
-    pub fn push_var(&'a mut self, var: &ir::VVar) -> &'a StackSlot {
-        let var_size = var.var.ty.size();
+    pub fn push_var(&'a mut self, var: &ir::Var) -> &'a StackSlot {
+        let var_size = var.ty.size();
         self.slots.insert(StackSlot {
             start: self.size,
             size: var_size,
@@ -46,7 +46,7 @@ impl<'a> StackFrame<'a> {
         slot
     }
 
-    pub fn get_var(&'a self, var: &ir::VVar) -> Option<&'a StackSlot> {
+    pub fn get_var(&'a self, var: &ir::Var) -> Option<&'a StackSlot> {
         self.vars.get(var).map(|s| *s)
     }
 }

@@ -1,13 +1,13 @@
 use clap::Parser;
-use recaf::ast::ASTPrinter;
-use recaf::cfg::{build, draw, optimize, optimize::CFGOptimizer};
+use recaf::frontend::ast::ASTPrinter;
+//use recaf::cfg::{build, draw, optimize, optimize::CFGOptimizer};
 use recaf::cli::{Args, Stage};
-use recaf::ir;
-use recaf::parser::lexer::Lexer;
-use recaf::semantic;
+//use recaf::ir;
+use recaf::frontend::parser::lexer::Lexer;
+use recaf::frontend::semantic;
 use std::fs::File;
 use std::io::prelude::*;
-use recaf::codegen::genx86;
+//use recaf::codegen::genx86;
 
 fn main() {
     let args = Args::parse();
@@ -18,10 +18,11 @@ fn main() {
     let file = args.file.unwrap();
     match args.stage {
         Stage::Lex => lex(&file),
-        Stage::Parse => parse(&file),
-        Stage::Cfg => cfg(&file),
-        Stage::Ir => ir(&file),
-        Stage::Asm => asm(&file),
+        //Stage::Parse => parse(&file),
+        //Stage::Cfg => cfg(&file),
+        //Stage::Ir => ir(&file),
+        //Stage::Asm => asm(&file),
+        _ => ()
     }
 }
 
@@ -35,8 +36,8 @@ fn lex(file: &String) {
         panic!("Error reading {}: {}", file, msg);
     }
 
-    let mut lexer = Lexer::new(&content);
-    while let Some(tok_or_err) = lexer.next() {
+    let lexer = Lexer::new(&content);
+    for tok_or_err in lexer {
         match tok_or_err {
             Ok((_, tok, _)) => println!("{:?}", tok),
             Err(err) => eprintln!("{}", err.msg),
@@ -44,6 +45,7 @@ fn lex(file: &String) {
     }
 }
 
+/*
 fn parse(file: &String) {
     let mut content = String::new();
     let mut f = match File::open(file) {
@@ -178,3 +180,4 @@ fn asm(file: &String) {
     let asm = gen.run(ir);
     println!("{}", asm);
 }
+*/

@@ -1,5 +1,5 @@
-use crate::ast::*;
-use crate::source_pos::SrcSpan;
+use crate::frontend::ast::*;
+use crate::utils::source_pos::SrcSpan;
 use std::cell::RefCell;
 
 pub struct ParserState {
